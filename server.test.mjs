@@ -406,6 +406,7 @@ test('page contains the rename wiring: data-host attribute and a POST to /rename
 		assert.match(body.data, /fetch\(['"]\/rename['"]/);
 		assert.match(body.data, /keydown/);
 		assert.match(body.data, /r\.ok/);
+		assert.match(body.data, /\.catch\(/);
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;

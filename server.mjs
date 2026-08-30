@@ -152,7 +152,7 @@ document.querySelectorAll('.name').forEach((el) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hostname: el.dataset.host, label }),
-    }).then((r) => (r.ok ? location.reload() : alert('Rename failed')));
+    }).then((r) => (r.ok ? location.reload() : alert('Rename failed'))).catch(() => alert('Rename failed'));
   };
   el.addEventListener('click', rename);
   el.addEventListener('keydown', (e) => {
