@@ -563,12 +563,27 @@ test('hasTailnetAddr is false for ordinary interfaces and when Tailscale is down
 
 test('hasTailnetAddr rejects 100.x addresses outside the CGNAT range', () => {
 	const ifaces = {
-		en0: [
+		utun4: [
 			{ address: '100.63.255.254', family: 'IPv4', internal: false },
 			{ address: '100.128.0.1', family: 'IPv4', internal: false },
 		],
 	};
 	assert.equal(hasTailnetAddr(ifaces), false);
+});
+
+test('hasTailnetAddr ignores CGNAT addresses on non-tunnel interfaces (ISP/cellular CGNAT)', () => {
+	const ifaces = {
+		en0: [{ address: '100.101.102.103', family: 'IPv4', internal: false }],
+		eth0: [{ address: '100.64.1.2', family: 'IPv4', internal: false }],
+	};
+	assert.equal(hasTailnetAddr(ifaces), false);
+});
+
+test('hasTailnetAddr accepts a CGNAT IPv4 on a Linux tailscale0 interface', () => {
+	const ifaces = {
+		tailscale0: [{ address: '100.101.102.103', family: 'IPv4', internal: false }],
+	};
+	assert.equal(hasTailnetAddr(ifaces), true);
 });
 
 test('page shows the Tailscale banner with a reconnect hint only when the tailnet is down', () => {

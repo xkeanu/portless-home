@@ -17,10 +17,14 @@ const PORT = Number(process.env.PORT) || 5995;
 // fd7a:115c:a1e0::/48; either on a non-internal interface means the tailnet is up.
 // Interface inspection is in-process and instant — no tailscale CLI to shell out to.
 export const hasTailnetAddr = (ifaces) =>
-	Object.values(ifaces).some((addrs) =>
+	Object.entries(ifaces).some(([name, addrs]) =>
 		(addrs ?? []).some((a) => {
 			if (a.internal) return false;
 			if (a.family === 'IPv6') return a.address.toLowerCase().startsWith('fd7a:115c:a1e0:');
+			// CGNAT space is shared, not Tailscale-exclusive: an ISP or cellular
+			// uplink can hold a 100.64.0.0/10 address too, so only trust it on a
+			// tunnel interface (macOS utunN, Linux tailscale0).
+			if (!/^(utun|tailscale)/.test(name)) return false;
 			const [first, second] = a.address.split('.').map(Number);
 			return a.family === 'IPv4' && first === 100 && second >= 64 && second <= 127;
 		})
