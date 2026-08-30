@@ -18,6 +18,18 @@ const get = (port) =>
 		req.end();
 	});
 
+const post = (port, path, body) =>
+	new Promise((resolve, reject) => {
+		const req = request({ host: '127.0.0.1', port, method: 'POST', path }, (res) => {
+			let data = '';
+			res.on('data', (chunk) => (data += chunk));
+			res.on('end', () => resolve({ status: res.statusCode, data }));
+		});
+		req.on('error', reject);
+		if (typeof body === 'string') req.end(body);
+		else req.end(JSON.stringify(body));
+	});
+
 test('probe resolves true when a real server answers HEAD', async () => {
 	const srv = createServer((req, res) => res.end());
 	await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
@@ -95,6 +107,7 @@ test('handler renders a green dot for a live port and a plain dot for a dead one
 	);
 
 	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
 
 	const app = createServer(handler);
@@ -103,12 +116,13 @@ test('handler renders a green dot for a live port and a plain dot for a dead one
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.match(body.data, /<span class="dot up" role="img" aria-label="online"><\/span><span class="name">demo<\/span>/);
-		assert.match(body.data, /<span class="dot" role="img" aria-label="offline"><\/span><span class="name">blog<\/span>/);
+		assert.match(body.data, /<span class="dot up" role="img" aria-label="online"><\/span><span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+		assert.match(body.data, /<span class="dot" role="img" aria-label="offline"><\/span><span class="name" data-host="blog\.localhost" role="button" tabindex="0">blog<\/span>/);
 	} finally {
 		app.close();
 		live.close();
 		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
 	}
 });
 
@@ -117,6 +131,7 @@ test('handler returns 200 with an empty page when the routes file is missing', a
 	const missingPath = join(dir, 'does-not-exist.json');
 
 	process.env.PORTLESS_ROUTES = missingPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
 
 	const app = createServer(handler);
@@ -129,6 +144,7 @@ test('handler returns 200 with an empty page when the routes file is missing', a
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
 	}
 });
 
@@ -153,6 +169,248 @@ test('probe resolves false when a peer trickles bytes forever', async () => {
 	} finally {
 		socks.forEach((sock) => sock.destroy());
 		srv.close();
+	}
+});
+
+test('GET renders the override label from names.json instead of the hostname', async () => {
+	const live = createServer((req, res) => res.end());
+	await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
+	const livePort = live.address().port;
+
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([
+			{ hostname: 'demo.localhost', port: livePort, pid: process.pid, tailscaleUrl: 'https://demo.example.ts.net' },
+		])
+	);
+	const namesPath = join(dir, 'names.json');
+	writeFileSync(namesPath, JSON.stringify({ 'demo.localhost': 'My Demo' }));
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = namesPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const body = await get(port);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">My Demo<\/span>/);
+	} finally {
+		app.close();
+		live.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+	}
+});
+
+test('GET still renders when names.json is missing', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'demo.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://demo.example.ts.net' }])
+	);
+	const namesPath = join(dir, 'does-not-exist.json');
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = namesPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const body = await get(port);
+		assert.equal(body.status, 200);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+	}
+});
+
+test('GET still renders when names.json is corrupt', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'demo.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://demo.example.ts.net' }])
+	);
+
+	for (const contents of ['{not json', '["array", "not", "object"]']) {
+		const namesPath = join(dir, 'names.json');
+		writeFileSync(namesPath, contents);
+
+		process.env.PORTLESS_ROUTES = routesPath;
+		process.env.PORTLESS_NAMES = namesPath;
+		const { handler } = await import(`./server.mjs?fixture=${Date.now()}-${Math.random()}`);
+
+		const app = createServer(handler);
+		await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+		const { port } = app.address();
+		try {
+			const body = await get(port);
+			assert.equal(body.status, 200);
+			assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+		} finally {
+			app.close();
+			delete process.env.PORTLESS_ROUTES;
+			delete process.env.PORTLESS_NAMES;
+		}
+	}
+});
+
+test('POST /rename writes the file; a following GET shows the new label', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'demo.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://demo.example.ts.net' }])
+	);
+	const namesPath = join(dir, 'sub', 'names.json');
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = namesPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const res = await post(port, '/rename', { hostname: 'demo.localhost', label: 'New Label' });
+		assert.equal(res.status, 204);
+		const body = await get(port);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">New Label<\/span>/);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+	}
+});
+
+test('POST with empty label clears an existing override', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'demo.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://demo.example.ts.net' }])
+	);
+	const namesPath = join(dir, 'names.json');
+	writeFileSync(namesPath, JSON.stringify({ 'demo.localhost': 'My Demo' }));
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = namesPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const res = await post(port, '/rename', { hostname: 'demo.localhost', label: '   ' });
+		assert.equal(res.status, 204);
+		const body = await get(port);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+	}
+});
+
+test('POST /rename rejects unknown hostname, malformed JSON, and over-long labels', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'demo.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://demo.example.ts.net' }])
+	);
+	const namesPath = join(dir, 'names.json');
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = namesPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const unknown = await post(port, '/rename', { hostname: 'nope.localhost', label: 'x' });
+		assert.equal(unknown.status, 404);
+
+		const malformed = await post(port, '/rename', '{not json');
+		assert.equal(malformed.status, 400);
+
+		const nullPayload = await post(port, '/rename', 'null');
+		assert.equal(nullPayload.status, 400);
+
+		const tooLong = await post(port, '/rename', { hostname: 'demo.localhost', label: 'x'.repeat(65) });
+		assert.equal(tooLong.status, 400);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+	}
+});
+
+test('a label with markup renders escaped in the page', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'demo.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://demo.example.ts.net' }])
+	);
+	const namesPath = join(dir, 'names.json');
+	writeFileSync(namesPath, JSON.stringify({ 'demo.localhost': '<script>alert(1)</script>"' }));
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = namesPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const body = await get(port);
+		assert.doesNotMatch(body.data, /<script>alert/);
+		assert.match(body.data, /&#60;script&#62;alert\(1\)&#60;\/script&#62;&#34;/);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+	}
+});
+
+test('page contains the rename wiring: data-host attribute and a POST to /rename in the inline script', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'demo.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://demo.example.ts.net' }])
+	);
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const body = await get(port);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+		assert.match(body.data, /<script>[\s\S]*\/rename[\s\S]*<\/script>/);
+		assert.match(body.data, /fetch\(['"]\/rename['"]/);
+		assert.match(body.data, /keydown/);
+		assert.match(body.data, /r\.ok/);
+		assert.match(body.data, /\.catch\(/);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
 	}
 });
 

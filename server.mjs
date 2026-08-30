@@ -2,12 +2,13 @@
 // Lists the machine's running portless apps with their Tailscale URLs.
 // Reads ~/.portless/routes.json on every request — no restarts needed.
 import { createServer, request } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
+const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
 
@@ -39,11 +40,19 @@ export const probe = (port, timeoutMs = 300) =>
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const card = (r, up) => {
-	const name = esc(r.hostname.replace(/\.localhost$/, ''));
+const readNames = () => {
+	try {
+		const names = JSON.parse(readFileSync(NAMES, 'utf8'));
+		if (names && typeof names === 'object' && !Array.isArray(names)) return names;
+	} catch {}
+	return {};
+};
+
+const card = (r, up, names) => {
+	const name = esc(names[r.hostname] || r.hostname.replace(/\.localhost$/, ''));
 	const row = `<span class="row"><span class="${up ? 'dot up' : 'dot'}" role="img" aria-label="${
 		up ? 'online' : 'offline'
-	}"></span><span class="name">${name}</span></span>`;
+	}"></span><span class="name" data-host="${esc(r.hostname)}" role="button" tabindex="0">${name}</span></span>`;
 	if (!r.tailscaleUrl) {
 		return `<li class="local">${row}<span class="url">local only — ${esc(r.hostname)}</span></li>`;
 	}
@@ -52,13 +61,60 @@ const card = (r, up) => {
 	)}</span></a></li>`;
 };
 
-export const handler = async (req, res) => {
-	let routes = [];
+const readRoutes = () => {
 	try {
-		routes = JSON.parse(readFileSync(ROUTES, 'utf8')).filter((r) => alive(r.pid));
-	} catch {}
+		return JSON.parse(readFileSync(ROUTES, 'utf8')).filter((r) => alive(r.pid));
+	} catch {
+		return [];
+	}
+};
+
+const readBody = (req, limit = 16 * 1024) =>
+	new Promise((resolve, reject) => {
+		let data = '';
+		req.on('data', (chunk) => {
+			data += chunk;
+			if (data.length > limit) {
+				req.destroy();
+				reject(new Error('payload too large'));
+			}
+		});
+		req.on('end', () => resolve(data));
+		req.on('error', reject);
+	});
+
+const writeNames = (names) => {
+	mkdirSync(dirname(NAMES), { recursive: true });
+	writeFileSync(NAMES, JSON.stringify(names));
+};
+
+const fail = (res, code) => res.writeHead(code).end();
+
+const rename = async (req, res) => {
+	let payload;
+	try {
+		payload = JSON.parse(await readBody(req));
+	} catch {
+		return fail(res, 400);
+	}
+	const { hostname, label } = payload ?? {};
+	if (typeof hostname !== 'string' || typeof label !== 'string') return fail(res, 400);
+	const trimmed = label.trim();
+	if (trimmed.length > 64) return fail(res, 400);
+	if (!readRoutes().some((r) => r.hostname === hostname)) return fail(res, 404);
+	const names = readNames();
+	if (trimmed) names[hostname] = trimmed;
+	else delete names[hostname];
+	writeNames(names);
+	res.writeHead(204).end();
+};
+
+export const handler = async (req, res) => {
+	if (req.method === 'POST' && req.url === '/rename') return rename(req, res);
+	const routes = readRoutes();
 	const up = await Promise.all(routes.map((r) => probe(r.port)));
-	const rows = routes.map((r, i) => card(r, up[i])).join('');
+	const names = readNames();
+	const rows = routes.map((r, i) => card(r, up[i], names)).join('');
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
 	res.end(`<!DOCTYPE html>
 <html lang="en"><head>
@@ -84,7 +140,27 @@ export const handler = async (req, res) => {
 </style></head>
 <body><main><h1>dev apps</h1>
 ${rows ? `<ul>${rows}</ul>` : '<p class="empty">Nothing running. Start an app through portless.</p>'}
-</main></body></html>`);
+</main>
+<script>
+document.querySelectorAll('.name').forEach((el) => {
+  const rename = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const label = prompt('Rename', el.textContent);
+    if (label === null) return;
+    fetch('/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostname: el.dataset.host, label }),
+    }).then((r) => (r.ok ? location.reload() : alert('Rename failed'))).catch(() => alert('Rename failed'));
+  };
+  el.addEventListener('click', rename);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') rename(e);
+  });
+});
+</script>
+</body></html>`);
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handler).listen(PORT, '127.0.0.1');
