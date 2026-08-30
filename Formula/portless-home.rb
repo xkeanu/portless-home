@@ -12,6 +12,7 @@ class PortlessHome < Formula
       #!/bin/sh
       exec "#{formula_opt_bin("node")}/node" "#{libexec}/server.mjs" "$@"
     SH
+    (bin/"portless-home").chmod 0755
   end
 
   def caveats
@@ -23,6 +24,9 @@ class PortlessHome < Formula
 
       Then pin it to :443 of your tailnet device URL (persists across reboots):
         tailscale serve --bg --https=443 http://127.0.0.1:5995
+
+      When uninstalling, remove that serve rule too:
+        tailscale serve --https=443 off
     EOS
   end
 
