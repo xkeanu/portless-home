@@ -23,8 +23,11 @@ portless-home claims `:443` with a directory page instead:
   not
 - apps running without Tailscale sharing show up greyed out as "local
   only"
+- a banner warns when Tailscale itself is down (tailnet links would be
+  dead) with the command to reconnect
 
-It's one dependency-free Node server (`server.mjs`, ~90 lines) reading
+It's a tiny dependency-free Node server (`server.mjs` plus `render.mjs`
+for the HTML) reading
 portless's own `~/.portless/routes.json` on every request. Nothing to
 configure, nothing to restart when apps come and go. It listens on
 `127.0.0.1` and is only reachable from your own tailnet (and localhost)

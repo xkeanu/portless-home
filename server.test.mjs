@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
 import { writeFileSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { probe } from './server.mjs';
+import { hasTailnetAddr, probe } from './server.mjs';
+import { page } from './render.mjs';
 
 const get = (port) =>
 	new Promise((resolve, reject) => {
@@ -526,6 +527,89 @@ test('page head links the manifest, icons, and theme color', async () => {
 		assert.match(body.data, /<link rel="apple-touch-icon" href="\/icon\.png">/);
 		assert.match(body.data, /<meta name="theme-color" content="#101014">/);
 		assert.match(body.data, /<meta name="apple-mobile-web-app-capable" content="yes">/);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+	}
+});
+
+test('hasTailnetAddr spots a Tailscale IPv4 (100.64.0.0/10) on a non-internal interface', () => {
+	const ifaces = {
+		lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+		utun4: [{ address: '100.101.102.103', family: 'IPv4', internal: false }],
+	};
+	assert.equal(hasTailnetAddr(ifaces), true);
+});
+
+test('hasTailnetAddr spots a Tailscale IPv6 (fd7a:115c:a1e0::/48)', () => {
+	const ifaces = {
+		utun4: [{ address: 'fd7a:115c:a1e0:ab12:4843:cd96:6255:1234', family: 'IPv6', internal: false }],
+	};
+	assert.equal(hasTailnetAddr(ifaces), true);
+});
+
+test('hasTailnetAddr is false for ordinary interfaces and when Tailscale is down', () => {
+	const ifaces = {
+		lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+		en0: [
+			{ address: '192.168.1.10', family: 'IPv4', internal: false },
+			{ address: 'fe80::1c2d:3e4f:5a6b:7c8d', family: 'IPv6', internal: false },
+		],
+	};
+	assert.equal(hasTailnetAddr(ifaces), false);
+	assert.equal(hasTailnetAddr({}), false);
+});
+
+test('hasTailnetAddr rejects 100.x addresses outside the CGNAT range', () => {
+	const ifaces = {
+		utun4: [
+			{ address: '100.63.255.254', family: 'IPv4', internal: false },
+			{ address: '100.128.0.1', family: 'IPv4', internal: false },
+		],
+	};
+	assert.equal(hasTailnetAddr(ifaces), false);
+});
+
+test('hasTailnetAddr ignores CGNAT addresses on non-tunnel interfaces (ISP/cellular CGNAT)', () => {
+	const ifaces = {
+		en0: [{ address: '100.101.102.103', family: 'IPv4', internal: false }],
+		eth0: [{ address: '100.64.1.2', family: 'IPv4', internal: false }],
+	};
+	assert.equal(hasTailnetAddr(ifaces), false);
+});
+
+test('hasTailnetAddr accepts a CGNAT IPv4 on a Linux tailscale0 interface', () => {
+	const ifaces = {
+		tailscale0: [{ address: '100.101.102.103', family: 'IPv4', internal: false }],
+	};
+	assert.equal(hasTailnetAddr(ifaces), true);
+});
+
+test('page shows the Tailscale banner with a reconnect hint only when the tailnet is down', () => {
+	const down = page('', false);
+	assert.match(down, /<p class="banner" role="status">Tailscale not running/);
+	assert.match(down, /<code>tailscale up<\/code>/);
+
+	const up = page('', true);
+	assert.doesNotMatch(up, /class="banner"/);
+	assert.doesNotMatch(up, /Tailscale not running/);
+});
+
+test('GET / reflects the machine tailnet state in the banner', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	process.env.PORTLESS_ROUTES = join(dir, 'routes.json');
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const body = await get(port);
+		assert.equal(body.status, 200);
+		// The wiring under test: banner present exactly when this machine has no tailnet address.
+		assert.equal(body.data.includes('class="banner"'), !hasTailnetAddr(networkInterfaces()));
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;

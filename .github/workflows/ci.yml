@@ -16,6 +16,7 @@ jobs:
       - name: syntax checks
         run: |
           node --check server.mjs
+          node --check render.mjs
           bash -n install.sh
           bash -n uninstall.sh
           ruby -c Formula/portless-home.rb
