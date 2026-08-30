@@ -1,0 +1,25 @@
+[
+	{
+		"hostname": "blog.localhost",
+		"pid": 40001,
+		"port": 4000,
+		"tailscaleUrl": "https://mini.example.ts.net:8443"
+	},
+	{
+		"hostname": "recipe-box.localhost",
+		"pid": 40002,
+		"port": 4001,
+		"tailscaleUrl": "https://mini.example.ts.net:8444"
+	},
+	{
+		"hostname": "home-dashboard.localhost",
+		"pid": 40003,
+		"port": 4002,
+		"tailscaleUrl": "https://mini.example.ts.net:8445"
+	},
+	{
+		"hostname": "scratchpad.localhost",
+		"pid": 40004,
+		"port": 4003
+	}
+]
