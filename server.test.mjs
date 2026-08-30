@@ -554,6 +554,41 @@ test('POST /layout keeps pins for apps that are not currently running', async ()
 	}
 });
 
+test('POST /layout: a later save replaces the order of an earlier one', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify(
+			['alpha', 'beta'].map((n) => ({
+				hostname: `${n}.localhost`, port: 1, pid: process.pid, tailscaleUrl: `https://${n}.example.ts.net`,
+			}))
+		)
+	);
+	const layoutPath = join(dir, 'layout.json');
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	process.env.PORTLESS_LAYOUT = layoutPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		await post(port, '/layout', { pinned: ['beta.localhost'] });
+		await post(port, '/layout', { pinned: ['alpha.localhost', 'beta.localhost'] });
+		assert.deepEqual(JSON.parse(readFileSync(layoutPath, 'utf8')), {
+			pinned: ['alpha.localhost', 'beta.localhost'],
+		});
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+		delete process.env.PORTLESS_LAYOUT;
+	}
+});
+
 test('POST /layout rejects malformed JSON, non-array pins, non-string entries, and oversized lists', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
 	const routesPath = join(dir, 'routes.json');
@@ -633,6 +668,8 @@ test('page contains the pin wiring: pin toggles, reorder handles on pinned cards
 		assert.match(body.data, /pointermove/);
 		assert.match(body.data, /ArrowUp/);
 		assert.doesNotMatch(body.data, /draggable="true"/);
+		// Saves are chained so rapid reorders cannot land out of order on the read-merge-write endpoint.
+		assert.match(body.data, /saving = saving\.then/);
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;

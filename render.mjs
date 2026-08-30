@@ -85,15 +85,21 @@ document.querySelectorAll('.name').forEach((el) => {
 const pinnedHosts = () => [...document.querySelectorAll('li.pinned')].map((li) => li.dataset.host);
 // reload after pinning (the card moves and re-renders); a plain reorder already
 // shows the right order, so saving silently keeps keyboard focus alive.
-const saveLayout = (pinned, reload) =>
-  fetch('/layout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pinned }),
-  }).then((r) => {
-    if (!r.ok) alert('Save failed');
-    else if (reload) location.reload();
-  }).catch(() => alert('Save failed'));
+// Saves chain on the previous one: /layout is read-merge-write, so two
+// in-flight snapshots could land out of order and revive a stale order.
+let saving = Promise.resolve();
+const saveLayout = (pinned, reload) => {
+  saving = saving.then(() =>
+    fetch('/layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinned }),
+    }).then((r) => {
+      if (!r.ok) alert('Save failed');
+      else if (reload) location.reload();
+    }).catch(() => alert('Save failed'))
+  );
+};
 document.querySelectorAll('.pin').forEach((el) => {
   const toggle = (e) => {
     e.preventDefault();
