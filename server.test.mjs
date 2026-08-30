@@ -589,6 +589,47 @@ test('POST /layout: a later save replaces the order of an earlier one', async ()
 	}
 });
 
+test('page script chains layout saves: a second save waits for the first request to settle', async () => {
+	const script = page('', true).match(/<script>([\s\S]*)<\/script>/)[1];
+	const clicks = [];
+	const fakePin = {
+		dataset: { host: 'demo.localhost' },
+		addEventListener: (type, fn) => {
+			if (type === 'click') clicks.push(fn);
+		},
+	};
+	const fetchCalls = [];
+	let settleFirst;
+	const fakeFetch = (url, opts) => {
+		fetchCalls.push(JSON.parse(opts.body));
+		return new Promise((resolve) => {
+			if (fetchCalls.length === 1) settleFirst = () => resolve({ ok: true });
+			else resolve({ ok: true });
+		});
+	};
+	const alerts = [];
+	const fakeDocument = {
+		querySelectorAll: (sel) => (sel === '.pin' ? [fakePin] : []),
+		addEventListener: () => {},
+	};
+	new Function('document', 'fetch', 'alert', 'location', script)(
+		fakeDocument,
+		fakeFetch,
+		(msg) => alerts.push(msg),
+		{ reload: () => {} }
+	);
+	const evt = { preventDefault: () => {}, stopPropagation: () => {} };
+	clicks[0](evt);
+	clicks[0](evt);
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(fetchCalls.length, 1, 'second save must not start while the first is in flight');
+	settleFirst();
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(fetchCalls.length, 2, 'second save runs once the first settles');
+	assert.deepEqual(fetchCalls[1], { pinned: ['demo.localhost'] });
+	assert.deepEqual(alerts, []);
+});
+
 test('POST /layout rejects malformed JSON, non-array pins, non-string entries, and oversized lists', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
 	const routesPath = join(dir, 'routes.json');
