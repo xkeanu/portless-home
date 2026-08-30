@@ -1,19 +1,30 @@
 // portless-home rendering: pure functions from data to strings, plus static assets.
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-export const card = (r, up, names, pinned = false) => {
-	const name = esc(names[r.hostname] || r.hostname.replace(/\.localhost$/, ''));
+// Display name: the rename override if any, else the hostname minus .localhost.
+export const displayName = (hostname, names) => names[hostname] || hostname.replace(/\.localhost$/, '');
+
+// `interactive` is false for cards from other devices: rename and pin are
+// per-device, and the same hostname can exist on two devices, so peer cards
+// carry no data-host and no controls.
+export const card = (r, up, names, pinned = false, interactive = true) => {
+	const name = esc(displayName(r.hostname, names));
 	const host = esc(r.hostname);
-	const pin = `<span class="pin${pinned ? ' pinned' : ''}" data-host="${host}" role="button" tabindex="0" aria-pressed="${pinned}" aria-label="${pinned ? 'unpin' : 'pin'}">${pinned ? '★' : '☆'}</span>`;
+	const pin = interactive
+		? `<span class="pin${pinned ? ' pinned' : ''}" data-host="${host}" role="button" tabindex="0" aria-pressed="${pinned}" aria-label="${pinned ? 'unpin' : 'pin'}">${pinned ? '★' : '☆'}</span>`
+		: '';
 	// Only pinned cards get a reorder handle: unpinned cards keep routes.json order.
-	const handle = pinned
+	const handle = interactive && pinned
 		? '<span class="handle" role="button" tabindex="0" aria-label="reorder: drag, or arrow keys">⠿</span>'
 		: '';
+	const label = interactive
+		? `<span class="name" data-host="${host}" role="button" tabindex="0">${name}</span>`
+		: `<span class="name">${name}</span>`;
 	const row = `<span class="row"><span class="${up ? 'dot up' : 'dot'}" role="img" aria-label="${
 		up ? 'online' : 'offline'
-	}"></span><span class="name" data-host="${host}" role="button" tabindex="0">${name}</span>${handle}${pin}</span>`;
+	}"></span>${label}${handle}${pin}</span>`;
 	const cls = [r.tailscaleUrl ? '' : 'local', pinned ? 'pinned' : ''].filter(Boolean).join(' ');
-	const li = `<li${cls ? ` class="${cls}"` : ''} data-host="${host}">`;
+	const li = `<li${cls ? ` class="${cls}"` : ''}${interactive ? ` data-host="${host}"` : ''}>`;
 	if (!r.tailscaleUrl) {
 		return `${li}${row}<span class="url">local only — ${host}</span></li>`;
 	}
@@ -25,7 +36,24 @@ export const card = (r, up, names, pinned = false) => {
 const BANNER =
 	'<p class="banner" role="status">Tailscale not running — tailnet links won&#39;t work. Reconnect: <code>tailscale up</code> or open the Tailscale app.</p>';
 
-export const page = (rows, tailnetUp) => `<!DOCTYPE html>
+const EMPTY_LOCAL = 'Nothing running. Start an app through portless.';
+const list = (rows, empty) => (rows ? `<ul>${rows}</ul>` : `<p class="empty">${empty}</p>`);
+const section = (device, rows, empty) => `<section><h2>${esc(device)}</h2>${list(rows, empty)}</section>`;
+const peerSection = ({ device, apps }) =>
+	section(
+		device,
+		apps.map((a) => card(a, a.up, a.label ? { [a.hostname]: a.label } : {}, false, false)).join(''),
+		'Nothing running.'
+	);
+
+// Page body: a bare list while no peers are configured; otherwise one section
+// per device — this one first, then every peer that answered (null = did not).
+export const directory = (device, rows, peers) =>
+	peers.length
+		? [section(device, rows, EMPTY_LOCAL), ...peers.filter(Boolean).map(peerSection)].join('')
+		: list(rows, EMPTY_LOCAL);
+
+export const page = (body, tailnetUp) => `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light"><meta http-equiv="refresh" content="15">
@@ -40,6 +68,8 @@ export const page = (rows, tailnetUp) => `<!DOCTYPE html>
     display:flex;justify-content:center;padding:48px 16px}
   main{width:100%;max-width:420px}
   h1{font-size:14px;font-weight:500;color:#8a8a94;letter-spacing:.08em;text-transform:uppercase}
+  h2{font-size:12px;font-weight:500;color:#5e5e68;letter-spacing:.08em;text-transform:uppercase;margin:28px 0 8px}
+  section>ul,section>.empty{margin-top:0}
   ul{list-style:none;padding:0;margin:16px 0}
   li a,li.local{display:flex;flex-direction:column;gap:2px;padding:14px 16px;margin-bottom:8px;
     background:#1a1a20;border:1px solid #2a2a32;border-radius:10px;text-decoration:none}
@@ -62,10 +92,10 @@ export const page = (rows, tailnetUp) => `<!DOCTYPE html>
 </style></head>
 <body><main><h1>dev apps</h1>
 ${tailnetUp ? '' : BANNER}
-${rows ? `<ul>${rows}</ul>` : '<p class="empty">Nothing running. Start an app through portless.</p>'}
+${body}
 </main>
 <script>
-document.querySelectorAll('.name').forEach((el) => {
+document.querySelectorAll('.name[data-host]').forEach((el) => {
   const rename = (e) => {
     e.preventDefault();
     e.stopPropagation();

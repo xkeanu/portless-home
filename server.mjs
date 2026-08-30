@@ -3,14 +3,16 @@
 // Reads ~/.portless/routes.json on every request — no restarts needed.
 import { createServer, request } from 'node:http';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { homedir, networkInterfaces } from 'node:os';
+import { homedir, hostname, networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { card, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
+import { card, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
+import { readPeers, fetchPeer, snapshot } from './peers.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
 const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 'layout.json');
+const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.portless-home', 'peers.json');
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
 
@@ -159,21 +161,34 @@ const layout = async (req, res) => {
 	res.writeHead(204).end();
 };
 
+// This device's running apps, pinned first, each probed for health.
+const localApps = async () => {
+	const { pinned } = readLayout();
+	const routes = orderRoutes(readRoutes(), pinned);
+	const up = await Promise.all(routes.map((r) => probe(r.port)));
+	return { routes, up, names: readNames(), pinned: new Set(pinned) };
+};
+
+// JSON twin of the cards, for other portless-home instances (see peers.mjs).
+// Lists this device only, so peers pointing at each other cannot fan out.
+const api = async (res) => {
+	const { routes, up, names } = await localApps();
+	serve(res, 'application/json', JSON.stringify(snapshot(hostname(), routes, up, names)));
+};
+
 export const handler = async (req, res) => {
 	if (req.method === 'POST' && req.url === '/rename') return rename(req, res);
 	if (req.method === 'POST' && req.url === '/layout') return layout(req, res);
+	if (req.url === '/api/routes') return req.method === 'GET' ? api(res) : fail(res, 405);
 	if (req.url === '/manifest.webmanifest') return serve(res, 'application/manifest+json', MANIFEST);
 	if (req.url === '/icon.svg') return serve(res, 'image/svg+xml', ICON_SVG);
 	if (req.url === '/icon.png') return serve(res, 'image/png', ICON_PNG);
 	if (req.url === '/icon-512.png') return serve(res, 'image/png', ICON_PNG_512);
-	const { pinned } = readLayout();
-	const routes = orderRoutes(readRoutes(), pinned);
-	const up = await Promise.all(routes.map((r) => probe(r.port)));
-	const names = readNames();
-	const pinnedSet = new Set(pinned);
-	const rows = routes.map((r, i) => card(r, up[i], names, pinnedSet.has(r.hostname))).join('');
+	// Peers are fetched alongside the local probes, never after them.
+	const [{ routes, up, names, pinned }, ...peers] = await Promise.all([localApps(), ...readPeers(PEERS).map((p) => fetchPeer(p))]);
+	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname))).join('');
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-	res.end(page(rows, hasTailnetAddr(networkInterfaces())));
+	res.end(page(directory(hostname(), rows, peers), hasTailnetAddr(networkInterfaces())));
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handler).listen(PORT, '127.0.0.1');
