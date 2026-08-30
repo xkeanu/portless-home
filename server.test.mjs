@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
+import { createServer as createTcpServer } from 'node:net';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -102,8 +103,8 @@ test('handler renders a green dot for a live port and a plain dot for a dead one
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.match(body.data, /<span class="dot up"><\/span><span class="name">demo<\/span>/);
-		assert.match(body.data, /<span class="dot"><\/span><span class="name">blog<\/span>/);
+		assert.match(body.data, /<span class="dot up" role="img" aria-label="online"><\/span><span class="name">demo<\/span>/);
+		assert.match(body.data, /<span class="dot" role="img" aria-label="offline"><\/span><span class="name">blog<\/span>/);
 	} finally {
 		app.close();
 		live.close();
@@ -128,6 +129,30 @@ test('handler returns 200 with an empty page when the routes file is missing', a
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
+	}
+});
+
+test('probe resolves false when a peer trickles bytes forever', async () => {
+	const socks = [];
+	const srv = createTcpServer((sock) => {
+		socks.push(sock);
+		const drip = setInterval(() => sock.write('HTTP/1.1 200 OK\r\nX-Drip: '), 100);
+		sock.on('close', () => clearInterval(drip));
+	});
+	await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+	const { port } = srv.address();
+	try {
+		const start = Date.now();
+		const result = await Promise.race([
+			probe(port, 150),
+			new Promise((resolve) => setTimeout(() => resolve('hung'), 1500)),
+		]);
+		const elapsed = Date.now() - start;
+		assert.equal(result, false);
+		assert.ok(elapsed < 1000, `expected the hard deadline to fire, took ${elapsed}ms`);
+	} finally {
+		socks.forEach((sock) => sock.destroy());
+		srv.close();
 	}
 });
 

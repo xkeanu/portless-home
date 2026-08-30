@@ -22,12 +22,18 @@ const alive = (pid) => {
 
 export const probe = (port, timeoutMs = 300) =>
 	new Promise((resolve) => {
-		const req = request({ host: '127.0.0.1', port, method: 'HEAD', timeout: timeoutMs }, (res) => {
+		// Hard deadline: http's `timeout` option only tracks socket inactivity,
+		// so a peer trickling bytes could stall the probe (and the page) forever.
+		const req = request({ host: '127.0.0.1', port, method: 'HEAD' }, (res) => {
 			res.destroy();
-			resolve(true);
+			done(true);
 		});
-		req.on('timeout', () => req.destroy());
-		req.on('error', () => resolve(false));
+		const deadline = setTimeout(() => req.destroy(), timeoutMs);
+		const done = (up) => {
+			clearTimeout(deadline);
+			resolve(up);
+		};
+		req.on('error', () => done(false));
 		req.end();
 	});
 
@@ -35,7 +41,9 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 const card = (r, up) => {
 	const name = esc(r.hostname.replace(/\.localhost$/, ''));
-	const row = `<span class="row"><span class="${up ? 'dot up' : 'dot'}"></span><span class="name">${name}</span></span>`;
+	const row = `<span class="row"><span class="${up ? 'dot up' : 'dot'}" role="img" aria-label="${
+		up ? 'online' : 'offline'
+	}"></span><span class="name">${name}</span></span>`;
 	if (!r.tailscaleUrl) {
 		return `<li class="local">${row}<span class="url">local only — ${esc(r.hostname)}</span></li>`;
 	}
