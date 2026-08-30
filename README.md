@@ -91,6 +91,31 @@ yourself (once; it persists across reboots):
 tailscale serve --bg --https=443 http://127.0.0.1:5995
 ```
 
+## Menu bar (macOS)
+
+`menubar/portless-home.15s.sh` is a plugin for [xbar](https://xbarapp.com)
+or [SwiftBar](https://swiftbar.app). It puts `⌂ 3` in the menu bar (the
+number of apps passing the health probe) with a dropdown listing every
+running app — a ● / ○ health dot and a link to its tailnet URL (local-only
+apps link to their localhost port) — plus **Open home page** and
+**Start / Stop / Restart service** for the login service. Copy or symlink
+it into your plugin folder:
+
+```sh
+ln -s "$PWD/menubar/portless-home.15s.sh" ~/Library/Application\ Support/xbar/plugins/
+```
+
+(For SwiftBar, use the plugin folder you chose in its settings. Installed
+via Homebrew? The file is at
+`$(brew --prefix)/share/portless-home/menubar/portless-home.15s.sh`.) The
+`15s` in the file name is the refresh interval; rename the link to change
+it.
+When the server is down the icon greys out and the menu offers **Start
+service**. The plugin only needs `curl`: the menu itself comes from the
+server at `/api/menubar`, in the plugin text format, and the port is read
+from the installed launchd plist (`PORTLESS_HOME_URL` overrides the
+server URL).
+
 ## Other devices
 
 Running portless-home on more than one machine? Any instance can show

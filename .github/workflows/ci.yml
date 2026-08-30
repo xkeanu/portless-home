@@ -18,8 +18,10 @@ jobs:
           node --check server.mjs
           node --check render.mjs
           node --check peers.mjs
+          node --check menubar.mjs
           bash -n install.sh
           bash -n uninstall.sh
+          sh -n menubar/portless-home.15s.sh
           ruby -c Formula/portless-home.rb
       - name: smoke test
         run: |

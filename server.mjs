@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { card, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
 import { readPeers, fetchPeer, snapshot } from './peers.mjs';
+import { menubar } from './menubar.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
@@ -176,10 +177,17 @@ const api = async (res) => {
 	serve(res, 'application/json', JSON.stringify(snapshot(hostname(), routes, up, names)));
 };
 
+// Text twin of the cards in xbar/SwiftBar plugin format, for menubar/ (see menubar.mjs).
+const menu = async (res) => {
+	const { routes, up, names } = await localApps();
+	serve(res, 'text/plain; charset=utf-8', menubar(routes, up, names, `http://127.0.0.1:${PORT}/`));
+};
+
 export const handler = async (req, res) => {
 	if (req.method === 'POST' && req.url === '/rename') return rename(req, res);
 	if (req.method === 'POST' && req.url === '/layout') return layout(req, res);
 	if (req.url === '/api/routes') return req.method === 'GET' ? api(res) : fail(res, 405);
+	if (req.url === '/api/menubar') return req.method === 'GET' ? menu(res) : fail(res, 405);
 	if (req.url === '/manifest.webmanifest') return serve(res, 'application/manifest+json', MANIFEST);
 	if (req.url === '/icon.svg') return serve(res, 'image/svg+xml', ICON_SVG);
 	if (req.url === '/icon.png') return serve(res, 'image/png', ICON_PNG);
