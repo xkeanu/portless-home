@@ -52,7 +52,7 @@ const card = (r, up, names) => {
 	const name = esc(names[r.hostname] || r.hostname.replace(/\.localhost$/, ''));
 	const row = `<span class="row"><span class="${up ? 'dot up' : 'dot'}" role="img" aria-label="${
 		up ? 'online' : 'offline'
-	}"></span><span class="name" data-host="${esc(r.hostname)}">${name}</span></span>`;
+	}"></span><span class="name" data-host="${esc(r.hostname)}" role="button" tabindex="0">${name}</span></span>`;
 	if (!r.tailscaleUrl) {
 		return `<li class="local">${row}<span class="url">local only — ${esc(r.hostname)}</span></li>`;
 	}
@@ -97,7 +97,7 @@ const rename = async (req, res) => {
 	} catch {
 		return fail(res, 400);
 	}
-	const { hostname, label } = payload;
+	const { hostname, label } = payload ?? {};
 	if (typeof hostname !== 'string' || typeof label !== 'string') return fail(res, 400);
 	const trimmed = label.trim();
 	if (trimmed.length > 64) return fail(res, 400);
@@ -143,7 +143,7 @@ ${rows ? `<ul>${rows}</ul>` : '<p class="empty">Nothing running. Start an app th
 </main>
 <script>
 document.querySelectorAll('.name').forEach((el) => {
-  el.addEventListener('click', (e) => {
+  const rename = (e) => {
     e.preventDefault();
     e.stopPropagation();
     const label = prompt('Rename', el.textContent);
@@ -152,7 +152,11 @@ document.querySelectorAll('.name').forEach((el) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hostname: el.dataset.host, label }),
-    }).then(() => location.reload());
+    }).then((r) => (r.ok ? location.reload() : alert('Rename failed')));
+  };
+  el.addEventListener('click', rename);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') rename(e);
   });
 });
 </script>

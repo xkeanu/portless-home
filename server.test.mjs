@@ -107,6 +107,7 @@ test('handler renders a green dot for a live port and a plain dot for a dead one
 	);
 
 	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
 
 	const app = createServer(handler);
@@ -115,12 +116,13 @@ test('handler renders a green dot for a live port and a plain dot for a dead one
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.match(body.data, /<span class="dot up" role="img" aria-label="online"><\/span><span class="name" data-host="demo\.localhost">demo<\/span>/);
-		assert.match(body.data, /<span class="dot" role="img" aria-label="offline"><\/span><span class="name" data-host="blog\.localhost">blog<\/span>/);
+		assert.match(body.data, /<span class="dot up" role="img" aria-label="online"><\/span><span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+		assert.match(body.data, /<span class="dot" role="img" aria-label="offline"><\/span><span class="name" data-host="blog\.localhost" role="button" tabindex="0">blog<\/span>/);
 	} finally {
 		app.close();
 		live.close();
 		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
 	}
 });
 
@@ -129,6 +131,7 @@ test('handler returns 200 with an empty page when the routes file is missing', a
 	const missingPath = join(dir, 'does-not-exist.json');
 
 	process.env.PORTLESS_ROUTES = missingPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
 
 	const app = createServer(handler);
@@ -141,6 +144,7 @@ test('handler returns 200 with an empty page when the routes file is missing', a
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
 	}
 });
 
@@ -193,7 +197,7 @@ test('GET renders the override label from names.json instead of the hostname', a
 	const { port } = app.address();
 	try {
 		const body = await get(port);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost">My Demo<\/span>/);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">My Demo<\/span>/);
 	} finally {
 		app.close();
 		live.close();
@@ -221,7 +225,7 @@ test('GET still renders when names.json is missing', async () => {
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost">demo<\/span>/);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -251,7 +255,7 @@ test('GET still renders when names.json is corrupt', async () => {
 		try {
 			const body = await get(port);
 			assert.equal(body.status, 200);
-			assert.match(body.data, /<span class="name" data-host="demo\.localhost">demo<\/span>/);
+			assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
 		} finally {
 			app.close();
 			delete process.env.PORTLESS_ROUTES;
@@ -280,7 +284,7 @@ test('POST /rename writes the file; a following GET shows the new label', async 
 		const res = await post(port, '/rename', { hostname: 'demo.localhost', label: 'New Label' });
 		assert.equal(res.status, 204);
 		const body = await get(port);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost">New Label<\/span>/);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">New Label<\/span>/);
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -309,7 +313,7 @@ test('POST with empty label clears an existing override', async () => {
 		const res = await post(port, '/rename', { hostname: 'demo.localhost', label: '   ' });
 		assert.equal(res.status, 204);
 		const body = await get(port);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost">demo<\/span>/);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -339,6 +343,9 @@ test('POST /rename rejects unknown hostname, malformed JSON, and over-long label
 
 		const malformed = await post(port, '/rename', '{not json');
 		assert.equal(malformed.status, 400);
+
+		const nullPayload = await post(port, '/rename', 'null');
+		assert.equal(nullPayload.status, 400);
 
 		const tooLong = await post(port, '/rename', { hostname: 'demo.localhost', label: 'x'.repeat(65) });
 		assert.equal(tooLong.status, 400);
@@ -386,6 +393,7 @@ test('page contains the rename wiring: data-host attribute and a POST to /rename
 	);
 
 	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
 
 	const app = createServer(handler);
@@ -393,12 +401,15 @@ test('page contains the rename wiring: data-host attribute and a POST to /rename
 	const { port } = app.address();
 	try {
 		const body = await get(port);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost">demo<\/span>/);
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
 		assert.match(body.data, /<script>[\s\S]*\/rename[\s\S]*<\/script>/);
 		assert.match(body.data, /fetch\(['"]\/rename['"]/);
+		assert.match(body.data, /keydown/);
+		assert.match(body.data, /r\.ok/);
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
 	}
 });
 
