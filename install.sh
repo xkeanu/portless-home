@@ -29,7 +29,7 @@ esac
 NODE_BIN="$(command -v node)" || { echo "node not found on PATH."; exit 1; }
 
 mkdir -p "$INSTALL_DIR"
-cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$SCRIPT_DIR/peers.mjs" "$INSTALL_DIR/"
 
 if [ "$AUTOSTART" = 1 ]; then AT_LOAD=true; RESTART=always; else AT_LOAD=false; RESTART=no; fi
 

@@ -908,6 +908,147 @@ test('GET / reflects the machine tailnet state in the banner', async () => {
 	}
 });
 
+// Boot the handler against a fresh fixture dir. Callers write routes/names/
+// layout/peers files into `dir` before calling; missing files are fine.
+const bootFixture = async (dir, files) => {
+	for (const [name, content] of Object.entries(files)) {
+		writeFileSync(join(dir, name), typeof content === 'string' ? content : JSON.stringify(content));
+	}
+	process.env.PORTLESS_ROUTES = join(dir, 'routes.json');
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	process.env.PORTLESS_LAYOUT = join(dir, 'layout.json');
+	process.env.PORTLESS_PEERS = join(dir, 'peers.json');
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}-${Math.random()}`);
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const close = () => {
+		app.close();
+		for (const key of ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS']) delete process.env[key];
+	};
+	return { port: app.address().port, close };
+};
+
+test('GET /api/routes returns this device and its apps as JSON, with labels and health', async () => {
+	const live = createServer((req, res) => res.end());
+	await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
+	const livePort = live.address().port;
+	const dead = createServer((req, res) => res.end());
+	await new Promise((resolve) => dead.listen(0, '127.0.0.1', resolve));
+	const deadPort = dead.address().port;
+	await new Promise((resolve) => dead.close(resolve));
+
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const { port, close } = await bootFixture(dir, {
+		'routes.json': [
+			{ hostname: 'demo.localhost', port: livePort, pid: process.pid, tailscaleUrl: 'https://mac.example.ts.net:8443' },
+			{ hostname: 'blog.localhost', port: deadPort, pid: process.pid, tailscaleUrl: 'https://mac.example.ts.net:8444' },
+			{ hostname: 'scratch.localhost', port: deadPort, pid: process.pid },
+			{ hostname: 'gone.localhost', port: deadPort, pid: 4194305, tailscaleUrl: 'https://mac.example.ts.net:8445' },
+		],
+		'names.json': { 'demo.localhost': 'My Demo' },
+	});
+	try {
+		const res = await getPath(port, '/api/routes');
+		assert.equal(res.status, 200);
+		assert.match(res.headers['content-type'], /^application\/json/);
+		const body = JSON.parse(res.data);
+		assert.equal(typeof body.device, 'string');
+		assert.ok(body.device.length > 0);
+		assert.deepEqual(body.apps, [
+			{ hostname: 'demo.localhost', label: 'My Demo', tailscaleUrl: 'https://mac.example.ts.net:8443', up: true },
+			{ hostname: 'blog.localhost', label: 'blog', tailscaleUrl: 'https://mac.example.ts.net:8444', up: false },
+			{ hostname: 'scratch.localhost', label: 'scratch', up: false },
+		]);
+		assert.equal((await post(port, '/api/routes', {})).status, 405);
+	} finally {
+		close();
+		live.close();
+	}
+});
+
+const jsonServer = async (body) => {
+	const srv = createServer((req, res) => {
+		res.setHeader('Content-Type', 'application/json');
+		res.end(JSON.stringify(body));
+	});
+	await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
+	return { srv, base: `http://127.0.0.1:${srv.address().port}` };
+};
+
+test('GET / merges configured peers under per-device headings; unreachable peers are skipped', async () => {
+	const live = createServer((req, res) => res.end());
+	await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
+	const peer = await jsonServer({
+		device: 'laptop <b>',
+		apps: [
+			{ hostname: 'web.localhost', label: 'Web <i>', tailscaleUrl: 'https://laptop.example.ts.net:8443', up: true },
+			{ hostname: 'notes.localhost', up: false },
+		],
+	});
+	const gone = createServer(() => {});
+	await new Promise((resolve) => gone.listen(0, '127.0.0.1', resolve));
+	const goneBase = `http://127.0.0.1:${gone.address().port}`;
+	await new Promise((resolve) => gone.close(resolve));
+
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const { port, close } = await bootFixture(dir, {
+		'routes.json': [
+			{ hostname: 'demo.localhost', port: live.address().port, pid: process.pid, tailscaleUrl: 'https://mac.example.ts.net:8443' },
+		],
+		'peers.json': { peers: [peer.base, goneBase] },
+	});
+	try {
+		const body = await get(port);
+		assert.equal(body.status, 200);
+		const headings = [...body.data.matchAll(/<h2>([^<]*)<\/h2>/g)].map((m) => m[1]);
+		assert.equal(headings.length, 2, `expected local + one reachable peer, got ${JSON.stringify(headings)}`);
+		assert.equal(headings[1], 'laptop &#60;b&#62;');
+		// local card keeps its controls
+		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+		// peer cards: escaped label, working link, no rename/pin controls
+		assert.match(body.data, /<a href="https:\/\/laptop\.example\.ts\.net:8443"><span class="row"><span class="dot up" role="img" aria-label="online"><\/span><span class="name">Web &#60;i&#62;<\/span><\/span>/);
+		assert.match(body.data, /<li class="local"><span class="row"><span class="dot" role="img" aria-label="offline"><\/span><span class="name">notes<\/span><\/span><span class="url">local only — notes\.localhost<\/span><\/li>/);
+		assert.equal((body.data.match(/class="pin/g) || []).length, 1);
+		// local section comes first and holds the local card
+		assert.ok(body.data.indexOf('demo.localhost') < body.data.indexOf('laptop &#60;b&#62;'));
+	} finally {
+		close();
+		live.close();
+		peer.srv.close();
+	}
+});
+
+test('GET / with a reachable peer that has nothing running shows its heading with an empty note', async () => {
+	const peer = await jsonServer({ device: 'laptop', apps: [] });
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const { port, close } = await bootFixture(dir, { 'peers.json': { peers: [peer.base] } });
+	try {
+		const body = await get(port);
+		assert.match(body.data, /<h2>laptop<\/h2><p class="empty">Nothing running\.<\/p>/);
+	} finally {
+		close();
+		peer.srv.close();
+	}
+});
+
+test('GET / with no peers configured renders no device headings', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const { port, close } = await bootFixture(dir, { 'routes.json': [] });
+	try {
+		const body = await get(port);
+		assert.equal(body.status, 200);
+		assert.doesNotMatch(body.data, /<h2>/);
+		assert.match(body.data, /Nothing running\. Start an app through portless\./);
+	} finally {
+		close();
+	}
+});
+
+test('page script only wires rename onto names that carry a data-host', () => {
+	const script = page('', true).match(/<script>([\s\S]*)<\/script>/)[1];
+	assert.match(script, /querySelectorAll\('\.name\[data-host\]'\)/);
+});
+
 test('probe resolves true when the server responds with a non-2xx status', async () => {
 	const srv = createServer((req, res) => {
 		res.writeHead(405);

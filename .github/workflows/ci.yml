@@ -17,6 +17,7 @@ jobs:
         run: |
           node --check server.mjs
           node --check render.mjs
+          node --check peers.mjs
           bash -n install.sh
           bash -n uninstall.sh
           ruby -c Formula/portless-home.rb

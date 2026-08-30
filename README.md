@@ -25,9 +25,11 @@ portless-home claims `:443` with a directory page instead:
   only"
 - a banner warns when Tailscale itself is down (tailnet links would be
   dead) with the command to reconnect
+- optionally, apps from your other machines too, grouped under one
+  heading per device (see [Other devices](#other-devices))
 
-It's a tiny dependency-free Node server (`server.mjs` plus `render.mjs`
-for the HTML) reading
+It's a tiny dependency-free Node server (`server.mjs`, plus `render.mjs`
+for the HTML and `peers.mjs` for talking to other instances) reading
 portless's own `~/.portless/routes.json` on every request. Nothing to
 configure, nothing to restart when apps come and go. It listens on
 `127.0.0.1` and is only reachable from your own tailnet (and localhost)
@@ -88,6 +90,39 @@ yourself (once; it persists across reboots):
 ```sh
 tailscale serve --bg --https=443 http://127.0.0.1:5995
 ```
+
+## Other devices
+
+Running portless-home on more than one machine? Any instance can show
+the others' apps as well. List their device URLs in
+`~/.portless-home/peers.json`:
+
+```json
+{ "peers": ["https://laptop.example.ts.net", "https://desktop.example.ts.net"] }
+```
+
+No restart needed — the file is read on every request. Once at least
+one peer is listed, the page groups apps under a heading per device,
+this machine first. Each peer is asked for its list over the tailnet
+(hard 1.5s timeout, in parallel with the local health checks); a peer
+that's off or unreachable is dropped after at most 1.5s and simply
+doesn't appear. Redirects from a peer aren't followed. Peer cards are
+read-only: renames and pins stay on the device they were made on.
+
+Every instance serves its own list as JSON at `/api/routes`:
+
+```json
+{ "device": "laptop", "apps": [
+  { "hostname": "web.localhost", "label": "Web", "tailscaleUrl": "https://laptop.example.ts.net:8443", "up": true },
+  { "hostname": "scratch.localhost", "label": "scratch", "up": false }
+] }
+```
+
+`label` is the display name (after any rename), `up` is the health
+probe result, and `tailscaleUrl` is absent for local-only apps. The
+endpoint only ever lists the device it runs on, so two instances
+listing each other can't loop. `PORTLESS_PEERS` points the server at a
+different peers file.
 
 ## Uninstall
 
