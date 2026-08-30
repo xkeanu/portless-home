@@ -57,6 +57,35 @@ to run once it's up.
 Custom port: `PORT=6001 ./install.sh` (then the serve rule targets that
 port).
 
+Don't want it starting at login? `./install.sh --no-autostart` starts
+the server now but skips start-at-login (and crash restarts). Rerun
+`./install.sh` without the flag to switch back.
+
+### Homebrew
+
+There are no tagged releases yet, so the formula installs from HEAD:
+
+```sh
+brew tap xkeanu/portless-home https://github.com/xkeanu/portless-home
+brew install --HEAD xkeanu/portless-home/portless-home
+```
+
+Then pick how it runs — this is the start-at-login switch for the brew
+path:
+
+```sh
+brew services start portless-home   # run now and at every login
+brew services run portless-home     # run now only
+brew services stop portless-home    # off
+```
+
+Homebrew doesn't touch your Tailscale config, so add the serve rule
+yourself (once; it persists across reboots):
+
+```sh
+tailscale serve --bg --https=443 http://127.0.0.1:5995
+```
+
 ## Uninstall
 
 ```sh
