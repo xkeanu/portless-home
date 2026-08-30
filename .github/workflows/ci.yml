@@ -18,6 +18,7 @@ jobs:
           node --check server.mjs
           bash -n install.sh
           bash -n uninstall.sh
+          ruby -c Formula/portless-home.rb
       - name: smoke test
         run: |
           mkdir -p ~/.portless
