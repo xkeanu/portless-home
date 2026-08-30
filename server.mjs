@@ -1,12 +1,13 @@
 // portless-home: a tiny tailnet home page for portless.
 // Lists the machine's running portless apps with their Tailscale URLs.
 // Reads ~/.portless/routes.json on every request — no restarts needed.
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROUTES = join(homedir(), '.portless', 'routes.json');
+const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
 
@@ -19,24 +20,37 @@ const alive = (pid) => {
 	}
 };
 
+export const probe = (port, timeoutMs = 300) =>
+	new Promise((resolve) => {
+		const req = request({ host: '127.0.0.1', port, method: 'HEAD', timeout: timeoutMs }, (res) => {
+			res.destroy();
+			resolve(true);
+		});
+		req.on('timeout', () => req.destroy());
+		req.on('error', () => resolve(false));
+		req.end();
+	});
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-const card = (r) => {
+const card = (r, up) => {
 	const name = esc(r.hostname.replace(/\.localhost$/, ''));
+	const row = `<span class="row"><span class="${up ? 'dot up' : 'dot'}"></span><span class="name">${name}</span></span>`;
 	if (!r.tailscaleUrl) {
-		return `<li class="local"><span class="name">${name}</span><span class="url">local only — ${esc(r.hostname)}</span></li>`;
+		return `<li class="local">${row}<span class="url">local only — ${esc(r.hostname)}</span></li>`;
 	}
-	return `<li><a href="${esc(r.tailscaleUrl)}"><span class="name">${name}</span><span class="url">${esc(
+	return `<li><a href="${esc(r.tailscaleUrl)}">${row}<span class="url">${esc(
 		r.tailscaleUrl.replace('https://', '')
 	)}</span></a></li>`;
 };
 
-createServer((req, res) => {
+export const handler = async (req, res) => {
 	let routes = [];
 	try {
 		routes = JSON.parse(readFileSync(ROUTES, 'utf8')).filter((r) => alive(r.pid));
 	} catch {}
-	const rows = routes.map(card).join('');
+	const up = await Promise.all(routes.map((r) => probe(r.port)));
+	const rows = routes.map((r, i) => card(r, up[i])).join('');
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
 	res.end(`<!DOCTYPE html>
 <html lang="en"><head>
@@ -53,6 +67,9 @@ createServer((req, res) => {
     background:#1a1a20;border:1px solid #2a2a32;border-radius:10px;text-decoration:none}
   li.local{opacity:.5}
   li a:active{background:#22222a}
+  .row{display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#4a4a54;flex:none}
+  .dot.up{background:#34c759}
   .name{color:#e6e6ea;font-size:16px;font-weight:600}
   .url{color:#8a8a94;font-size:12px;font-family:ui-monospace,monospace}
   .empty{color:#8a8a94;font-size:14px}
@@ -60,4 +77,6 @@ createServer((req, res) => {
 <body><main><h1>dev apps</h1>
 ${rows ? `<ul>${rows}</ul>` : '<p class="empty">Nothing running. Start an app through portless.</p>'}
 </main></body></html>`);
-}).listen(PORT, '127.0.0.1');
+};
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handler).listen(PORT, '127.0.0.1');
