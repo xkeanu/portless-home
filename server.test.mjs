@@ -449,6 +449,18 @@ test('GET /manifest.webmanifest returns an installable web app manifest', async 
 			manifest.icons.some((i) => i.purpose === 'any maskable'),
 			'a maskable icon for Android adaptive shapes'
 		);
+		for (const sizes of ['192x192', '512x512']) {
+			const icon = manifest.icons.find((i) => i.sizes === sizes);
+			assert.ok(icon, `a ${sizes} raster icon (Chromium installability criteria)`);
+			assert.equal(icon.type, 'image/png');
+			const served = await getPath(port, icon.src);
+			assert.equal(served.status, 200);
+			assert.equal(served.headers['content-type'], 'image/png');
+			assert.equal(served.data.slice(0, 8), '\x89PNG\r\n\x1a\n');
+			const px = Number(sizes.split('x')[0]);
+			const be32 = (s, o) => (s.charCodeAt(o) << 24) | (s.charCodeAt(o + 1) << 16) | (s.charCodeAt(o + 2) << 8) | s.charCodeAt(o + 3);
+			assert.deepEqual([be32(served.data, 16), be32(served.data, 20)], [px, px], `IHDR matches ${sizes}`);
+		}
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
