@@ -1063,3 +1063,40 @@ test('probe resolves true when the server responds with a non-2xx status', async
 		srv.close();
 	}
 });
+
+test('GET /api/menubar returns the xbar/SwiftBar dropdown as text: title, home link, one line per app', async () => {
+	const live = createServer((req, res) => res.end());
+	await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
+	const livePort = live.address().port;
+	const dead = createServer((req, res) => res.end());
+	await new Promise((resolve) => dead.listen(0, '127.0.0.1', resolve));
+	const deadPort = dead.address().port;
+	await new Promise((resolve) => dead.close(resolve));
+
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const { port, close } = await bootFixture(dir, {
+		'routes.json': [
+			{ hostname: 'demo.localhost', port: livePort, pid: process.pid, tailscaleUrl: 'https://mac.example.ts.net:8443' },
+			{ hostname: 'blog.localhost', port: deadPort, pid: process.pid, tailscaleUrl: 'https://mac.example.ts.net:8444' },
+			{ hostname: 'gone.localhost', port: deadPort, pid: 4194305, tailscaleUrl: 'https://mac.example.ts.net:8445' },
+		],
+		'names.json': { 'demo.localhost': 'My Demo' },
+	});
+	try {
+		const res = await getPath(port, '/api/menubar');
+		assert.equal(res.status, 200);
+		assert.match(res.headers['content-type'], /^text\/plain; charset=utf-8/);
+		assert.deepEqual(Buffer.from(res.data, 'latin1').toString('utf8').split('\n'), [
+			'⌂ 1',
+			'---',
+			'Open home page | href=http://127.0.0.1:5995/',
+			'---',
+			'● My Demo | href=https://mac.example.ts.net:8443 emojize=false symbolize=false',
+			'○ blog | href=https://mac.example.ts.net:8444 color=gray emojize=false symbolize=false',
+		]);
+		assert.equal((await post(port, '/api/menubar', {})).status, 405);
+	} finally {
+		close();
+		live.close();
+	}
+});

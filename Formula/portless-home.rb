@@ -7,7 +7,8 @@ class PortlessHome < Formula
   depends_on "node"
 
   def install
-    libexec.install "server.mjs", "render.mjs", "peers.mjs"
+    libexec.install "server.mjs", "render.mjs", "peers.mjs", "menubar.mjs"
+    pkgshare.install "menubar"
     (bin/"portless-home").write <<~SH
       #!/bin/sh
       exec "#{formula_opt_bin("node")}/node" "#{libexec}/server.mjs" "$@"
@@ -27,6 +28,9 @@ class PortlessHome < Formula
 
       When uninstalling, remove that serve rule too:
         tailscale serve --https=443 off
+
+      Menu bar (xbar/SwiftBar) plugin, to symlink into your plugin folder:
+        #{opt_pkgshare}/menubar/portless-home.15s.sh
     EOS
   end
 
