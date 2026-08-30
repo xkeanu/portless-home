@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: syntax checks
+        run: |
+          node --check server.mjs
+          bash -n install.sh
+          bash -n uninstall.sh
+      - name: smoke test
+        run: |
+          mkdir -p ~/.portless
+          printf '[{"hostname":"demo.localhost","pid":%d,"tailscaleUrl":"https://mac.tailnet.ts.net:8443"},{"hostname":"dead.localhost","pid":4194305}]' $$ > ~/.portless/routes.json
+          node server.mjs &
+          sleep 1
+          page=$(curl -sf http://127.0.0.1:5995)
+          echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
+          if echo "$page" | grep -q 'dead'; then echo "dead-pid app not filtered"; exit 1; fi
