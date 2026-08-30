@@ -53,7 +53,7 @@ Description=portless-home tailnet directory page
 After=network.target
 
 [Service]
-ExecStart=$NODE_BIN $INSTALL_DIR/server.mjs
+ExecStart="$NODE_BIN" "$INSTALL_DIR/server.mjs"
 Environment=PORT=$PORT
 Restart=always
 StandardError=append:$INSTALL_DIR/service.log
