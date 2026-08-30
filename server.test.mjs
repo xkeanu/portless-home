@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdtempSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { hasTailnetAddr, probe } from './server.mjs';
+import { hasTailnetAddr, probe, orderRoutes, mergePinned } from './server.mjs';
 import { page } from './render.mjs';
 
 const get = (port) =>
@@ -54,6 +54,30 @@ test('probe resolves true when a real server answers HEAD', async () => {
 	} finally {
 		srv.close();
 	}
+});
+
+test('orderRoutes puts pinned routes first in pin order; unpinned keep file order', () => {
+	const routes = ['a', 'b', 'c', 'd'].map((n) => ({ hostname: `${n}.localhost` }));
+	const out = orderRoutes(routes, ['c.localhost', 'a.localhost', 'ghost.localhost']);
+	assert.deepEqual(
+		out.map((r) => r.hostname),
+		['c.localhost', 'a.localhost', 'b.localhost', 'd.localhost']
+	);
+});
+
+test('orderRoutes with no pins returns routes unchanged', () => {
+	const routes = ['a', 'b'].map((n) => ({ hostname: `${n}.localhost` }));
+	assert.deepEqual(orderRoutes(routes, []), routes);
+});
+
+test('mergePinned keeps pins for apps that are not currently running', () => {
+	const next = mergePinned(['b.localhost'], ['gone.localhost', 'a.localhost'], ['a.localhost', 'b.localhost']);
+	assert.deepEqual(next, ['b.localhost', 'gone.localhost']);
+});
+
+test('mergePinned drops unknown hostnames and duplicates from the request', () => {
+	const next = mergePinned(['x.localhost', 'a.localhost', 'a.localhost'], [], ['a.localhost']);
+	assert.deepEqual(next, ['a.localhost']);
 });
 
 test('probe resolves false on connection refused', async () => {
@@ -425,6 +449,195 @@ test('page contains the rename wiring: data-host attribute and a POST to /rename
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
 		delete process.env.PORTLESS_NAMES;
+	}
+});
+
+test('GET renders pinned apps first, in layout.json order', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify(
+			['alpha', 'beta', 'gamma'].map((n) => ({
+				hostname: `${n}.localhost`, port: 1, pid: process.pid, tailscaleUrl: `https://${n}.example.ts.net`,
+			}))
+		)
+	);
+	writeFileSync(join(dir, 'layout.json'), JSON.stringify({ pinned: ['gamma.localhost', 'beta.localhost'] }));
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	process.env.PORTLESS_LAYOUT = join(dir, 'layout.json');
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const body = await get(port);
+		assert.equal(body.status, 200);
+		const pos = (host) => body.data.indexOf(`data-host="${host}"`);
+		assert.ok(pos('gamma.localhost') !== -1 && pos('beta.localhost') !== -1 && pos('alpha.localhost') !== -1);
+		assert.ok(pos('gamma.localhost') < pos('beta.localhost'), 'first pin renders first');
+		assert.ok(pos('beta.localhost') < pos('alpha.localhost'), 'unpinned renders after pins');
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+		delete process.env.PORTLESS_LAYOUT;
+	}
+});
+
+test('POST /layout saves the pin order; a following GET renders it', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify(
+			['alpha', 'beta'].map((n) => ({
+				hostname: `${n}.localhost`, port: 1, pid: process.pid, tailscaleUrl: `https://${n}.example.ts.net`,
+			}))
+		)
+	);
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	process.env.PORTLESS_LAYOUT = join(dir, 'sub', 'layout.json');
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const res = await post(port, '/layout', { pinned: ['beta.localhost'] });
+		assert.equal(res.status, 204);
+		const body = await get(port);
+		const pos = (host) => body.data.indexOf(`data-host="${host}"`);
+		assert.ok(pos('beta.localhost') < pos('alpha.localhost'), 'pinned app renders first');
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+		delete process.env.PORTLESS_LAYOUT;
+	}
+});
+
+test('POST /layout keeps pins for apps that are not currently running', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'alpha.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://alpha.example.ts.net' }])
+	);
+	const layoutPath = join(dir, 'layout.json');
+	writeFileSync(layoutPath, JSON.stringify({ pinned: ['gone.localhost'] }));
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	process.env.PORTLESS_LAYOUT = layoutPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const res = await post(port, '/layout', { pinned: ['alpha.localhost'] });
+		assert.equal(res.status, 204);
+		assert.deepEqual(JSON.parse(readFileSync(layoutPath, 'utf8')), {
+			pinned: ['alpha.localhost', 'gone.localhost'],
+		});
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+		delete process.env.PORTLESS_LAYOUT;
+	}
+});
+
+test('POST /layout rejects malformed JSON, non-array pins, non-string entries, and oversized lists', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify([{ hostname: 'alpha.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://alpha.example.ts.net' }])
+	);
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	process.env.PORTLESS_LAYOUT = join(dir, 'layout.json');
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		for (const body of ['{not json', 'null', '{}', '{"pinned":"alpha.localhost"}', '{"pinned":[42]}']) {
+			const res = await post(port, '/layout', body);
+			assert.equal(res.status, 400, `expected 400 for ${body}`);
+		}
+		const tooMany = await post(port, '/layout', { pinned: Array.from({ length: 101 }, (_, i) => `${i}.localhost`) });
+		assert.equal(tooMany.status, 400);
+		const tooLong = await post(port, '/layout', { pinned: [`${'x'.repeat(254)}.localhost`] });
+		assert.equal(tooLong.status, 400);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+		delete process.env.PORTLESS_LAYOUT;
+	}
+});
+
+test('page contains the pin wiring: pin toggles, reorder handles on pinned cards, and a POST to /layout', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(
+		routesPath,
+		JSON.stringify(
+			['alpha', 'beta'].map((n) => ({
+				hostname: `${n}.localhost`, port: 1, pid: process.pid, tailscaleUrl: `https://${n}.example.ts.net`,
+			}))
+		)
+	);
+	writeFileSync(join(dir, 'layout.json'), JSON.stringify({ pinned: ['beta.localhost'] }));
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	process.env.PORTLESS_LAYOUT = join(dir, 'layout.json');
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const body = await get(port);
+		assert.match(
+			body.data,
+			/<span class="pin pinned" data-host="beta\.localhost" role="button" tabindex="0" aria-pressed="true"/
+		);
+		assert.match(
+			body.data,
+			/<span class="pin" data-host="alpha\.localhost" role="button" tabindex="0" aria-pressed="false"/
+		);
+		assert.match(body.data, /<li class="pinned" data-host="beta\.localhost">/);
+		// The pinned card carries a reorder handle; unpinned cards do not.
+		// data-host="…"> only ends the <li> tag; on the inner spans more attributes follow.
+		const [alphaCard, betaCard] = ['alpha', 'beta'].map((n) => {
+			const from = body.data.indexOf(`data-host="${n}.localhost">`);
+			return body.data.slice(from, body.data.indexOf('</li>', from));
+		});
+		assert.match(betaCard, /<span class="handle" role="button" tabindex="0" aria-label="[^"]*"/);
+		assert.doesNotMatch(alphaCard, /class="handle"/);
+		assert.match(body.data, /fetch\(['"]\/layout['"]/);
+		// Reorder works with pointer events (mouse + touch) and arrow keys — not HTML5 DnD, which is inert on phones.
+		assert.match(body.data, /pointerdown/);
+		assert.match(body.data, /pointermove/);
+		assert.match(body.data, /ArrowUp/);
+		assert.doesNotMatch(body.data, /draggable="true"/);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+		delete process.env.PORTLESS_LAYOUT;
 	}
 });
 

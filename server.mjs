@@ -10,6 +10,7 @@ import { card, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
+const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 'layout.json');
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
 
@@ -29,6 +30,24 @@ export const hasTailnetAddr = (ifaces) =>
 			return a.family === 'IPv4' && first === 100 && second >= 64 && second <= 127;
 		})
 	);
+
+// Pinned routes float to the top in pin order; the rest keep routes.json order.
+export const orderRoutes = (routes, pinned) => {
+	const byHost = new Map(routes.map((r) => [r.hostname, r]));
+	const top = pinned.map((h) => byHost.get(h)).filter(Boolean);
+	const pinnedSet = new Set(pinned);
+	return [...top, ...routes.filter((r) => !pinnedSet.has(r.hostname))];
+};
+
+// New pinned list from a save: the request orders the currently running apps,
+// while pins for apps that are not running survive (appended) so the layout
+// re-attaches when they come back.
+export const mergePinned = (requested, oldPinned, liveHostnames) => {
+	const live = new Set(liveHostnames);
+	const keepRequested = requested.filter((h) => live.has(h));
+	const keepAbsent = oldPinned.filter((h) => !live.has(h) && !keepRequested.includes(h));
+	return [...new Set([...keepRequested, ...keepAbsent])];
+};
 
 const alive = (pid) => {
 	try {
@@ -62,6 +81,14 @@ const readNames = () => {
 		if (names && typeof names === 'object' && !Array.isArray(names)) return names;
 	} catch {}
 	return {};
+};
+
+const readLayout = () => {
+	try {
+		const layout = JSON.parse(readFileSync(LAYOUT, 'utf8'));
+		if (Array.isArray(layout?.pinned)) return { pinned: layout.pinned.filter((h) => typeof h === 'string') };
+	} catch {}
+	return { pinned: [] };
 };
 
 const readRoutes = () => {
@@ -98,13 +125,15 @@ const serve = (res, type, body) => {
 	res.end(body);
 };
 
-const rename = async (req, res) => {
-	let payload;
+const readJson = async (req) => {
 	try {
-		payload = JSON.parse(await readBody(req));
-	} catch {
-		return fail(res, 400);
-	}
+		return JSON.parse(await readBody(req));
+	} catch {}
+};
+
+const rename = async (req, res) => {
+	const payload = await readJson(req);
+	if (payload === undefined) return fail(res, 400);
 	const { hostname, label } = payload ?? {};
 	if (typeof hostname !== 'string' || typeof label !== 'string') return fail(res, 400);
 	const trimmed = label.trim();
@@ -117,16 +146,32 @@ const rename = async (req, res) => {
 	res.writeHead(204).end();
 };
 
+const layout = async (req, res) => {
+	const payload = await readJson(req);
+	if (payload === undefined) return fail(res, 400);
+	const { pinned } = payload ?? {};
+	if (!Array.isArray(pinned) || pinned.length > 100) return fail(res, 400);
+	if (pinned.some((h) => typeof h !== 'string' || h.length > 253)) return fail(res, 400);
+	const live = readRoutes().map((r) => r.hostname);
+	const next = mergePinned(pinned, readLayout().pinned, live);
+	mkdirSync(dirname(LAYOUT), { recursive: true });
+	writeFileSync(LAYOUT, JSON.stringify({ pinned: next }));
+	res.writeHead(204).end();
+};
+
 export const handler = async (req, res) => {
 	if (req.method === 'POST' && req.url === '/rename') return rename(req, res);
+	if (req.method === 'POST' && req.url === '/layout') return layout(req, res);
 	if (req.url === '/manifest.webmanifest') return serve(res, 'application/manifest+json', MANIFEST);
 	if (req.url === '/icon.svg') return serve(res, 'image/svg+xml', ICON_SVG);
 	if (req.url === '/icon.png') return serve(res, 'image/png', ICON_PNG);
 	if (req.url === '/icon-512.png') return serve(res, 'image/png', ICON_PNG_512);
-	const routes = readRoutes();
+	const { pinned } = readLayout();
+	const routes = orderRoutes(readRoutes(), pinned);
 	const up = await Promise.all(routes.map((r) => probe(r.port)));
 	const names = readNames();
-	const rows = routes.map((r, i) => card(r, up[i], names)).join('');
+	const pinnedSet = new Set(pinned);
+	const rows = routes.map((r, i) => card(r, up[i], names, pinnedSet.has(r.hostname))).join('');
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
 	res.end(page(rows, hasTailnetAddr(networkInterfaces())));
 };

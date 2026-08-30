@@ -1,15 +1,23 @@
 // portless-home rendering: pure functions from data to strings, plus static assets.
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-export const card = (r, up, names) => {
+export const card = (r, up, names, pinned = false) => {
 	const name = esc(names[r.hostname] || r.hostname.replace(/\.localhost$/, ''));
+	const host = esc(r.hostname);
+	const pin = `<span class="pin${pinned ? ' pinned' : ''}" data-host="${host}" role="button" tabindex="0" aria-pressed="${pinned}" aria-label="${pinned ? 'unpin' : 'pin'}">${pinned ? '★' : '☆'}</span>`;
+	// Only pinned cards get a reorder handle: unpinned cards keep routes.json order.
+	const handle = pinned
+		? '<span class="handle" role="button" tabindex="0" aria-label="reorder: drag, or arrow keys">⠿</span>'
+		: '';
 	const row = `<span class="row"><span class="${up ? 'dot up' : 'dot'}" role="img" aria-label="${
 		up ? 'online' : 'offline'
-	}"></span><span class="name" data-host="${esc(r.hostname)}" role="button" tabindex="0">${name}</span></span>`;
+	}"></span><span class="name" data-host="${host}" role="button" tabindex="0">${name}</span>${handle}${pin}</span>`;
+	const cls = [r.tailscaleUrl ? '' : 'local', pinned ? 'pinned' : ''].filter(Boolean).join(' ');
+	const li = `<li${cls ? ` class="${cls}"` : ''} data-host="${host}">`;
 	if (!r.tailscaleUrl) {
-		return `<li class="local">${row}<span class="url">local only — ${esc(r.hostname)}</span></li>`;
+		return `${li}${row}<span class="url">local only — ${host}</span></li>`;
 	}
-	return `<li><a href="${esc(r.tailscaleUrl)}">${row}<span class="url">${esc(
+	return `${li}<a href="${esc(r.tailscaleUrl)}">${row}<span class="url">${esc(
 		r.tailscaleUrl.replace('https://', '')
 	)}</span></a></li>`;
 };
@@ -41,6 +49,11 @@ export const page = (rows, tailnetUp) => `<!DOCTYPE html>
   .dot{width:8px;height:8px;border-radius:50%;background:#4a4a54;flex:none}
   .dot.up{background:#34c759}
   .name{color:#e6e6ea;font-size:16px;font-weight:600}
+  .pin{margin-left:auto;color:#4a4a54;font-size:15px;padding:0 2px;cursor:pointer}
+  .pin.pinned{color:#e8b761}
+  .handle{margin-left:auto;color:#4a4a54;font-size:14px;padding:0 2px;cursor:grab;touch-action:none}
+  .handle~.pin{margin-left:0}
+  li.drag{opacity:.5;pointer-events:none}
   .url{color:#8a8a94;font-size:12px;font-family:ui-monospace,monospace}
   .empty{color:#8a8a94;font-size:14px}
   .banner{background:#2a2014;border:1px solid #574018;border-radius:10px;color:#e8b761;
@@ -69,6 +82,73 @@ document.querySelectorAll('.name').forEach((el) => {
     if (e.key === 'Enter' || e.key === ' ') rename(e);
   });
 });
+const pinnedHosts = () => [...document.querySelectorAll('li.pinned')].map((li) => li.dataset.host);
+// reload after pinning (the card moves and re-renders); a plain reorder already
+// shows the right order, so saving silently keeps keyboard focus alive.
+const saveLayout = (pinned, reload) =>
+  fetch('/layout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pinned }),
+  }).then((r) => {
+    if (!r.ok) alert('Save failed');
+    else if (reload) location.reload();
+  }).catch(() => alert('Save failed'));
+document.querySelectorAll('.pin').forEach((el) => {
+  const toggle = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const host = el.dataset.host;
+    const pinned = pinnedHosts();
+    saveLayout(pinned.includes(host) ? pinned.filter((h) => h !== host) : [...pinned, host], true);
+  };
+  el.addEventListener('click', toggle);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') toggle(e);
+  });
+});
+// Reorder via the ⠿ handle: pointer events cover mouse and touch alike
+// (HTML5 drag-and-drop never fires on mobile), arrow keys cover keyboards.
+let drag = null;
+document.querySelectorAll('li.pinned .handle').forEach((el) => {
+  const li = el.closest('li');
+  el.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const sib = e.key === 'ArrowUp' ? li.previousElementSibling : li.nextElementSibling;
+    if (!sib || !sib.classList.contains('pinned')) return;
+    li.parentNode.insertBefore(li, e.key === 'ArrowUp' ? sib : sib.nextSibling);
+    el.focus();
+    saveLayout(pinnedHosts(), false);
+  });
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    drag = { li, before: pinnedHosts().join() };
+    li.classList.add('drag');
+  });
+});
+// Track the drag on document: moving the <li> releases pointer capture
+// (a DOM move counts as removal), so handle-scoped listeners would go quiet.
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  // li.drag has pointer-events:none, so this hits the card underneath.
+  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('li.pinned');
+  if (!over || over === drag.li) return;
+  const below = e.clientY > over.getBoundingClientRect().top + over.offsetHeight / 2;
+  over.parentNode.insertBefore(drag.li, below ? over.nextSibling : over);
+});
+const drop = () => {
+  if (!drag) return;
+  drag.li.classList.remove('drag');
+  if (pinnedHosts().join() !== drag.before) saveLayout(pinnedHosts(), false);
+  drag = null;
+};
+document.addEventListener('pointerup', drop);
+document.addEventListener('pointercancel', drop);
 </script>
 </body></html>`;
 
