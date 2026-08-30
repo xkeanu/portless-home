@@ -28,7 +28,7 @@ It's one dependency-free Node server (`server.mjs`, ~90 lines) reading
 portless's own `~/.portless/routes.json` on every request. Nothing to
 configure, nothing to restart when apps come and go. It listens on
 `127.0.0.1` and is only reachable from your own tailnet (and localhost)
-through `tailscale serve`. No data leaves your machine.
+through `tailscale serve`. Nothing is sent to any third-party service.
 
 ## Requirements
 
@@ -50,7 +50,9 @@ cd portless-home
 This copies the server to `~/.portless-home/`, registers a login service
 (launchd `sh.portless.home` on macOS, a systemd user service on Linux;
 starts at login, restarts on crash, no sudo), and adds a persistent
-`tailscale serve` rule pinning it to `:443`.
+`tailscale serve` rule pinning it to `:443`. If Tailscale isn't running
+at install time, the script skips the serve rule and prints the command
+to run once it's up.
 
 Custom port: `PORT=6001 ./install.sh` (then the serve rule targets that
 port).
@@ -66,7 +68,7 @@ rule.
 
 ## How it fits together
 
-```
+```text
 phone ── https://<device>.<tailnet>.ts.net ──► tailscale serve :443 ──► portless-home :5995
                                        :8443 ──► your app A
                                        :8444 ──► your app B
@@ -78,15 +80,25 @@ certs.
 
 ## Running it locally
 
-Serve the directory page from any `routes.json`, real or fake, without
-installing anything:
+Run the server straight from a checkout, no install needed. It reads
+`~/.portless/routes.json` by default and serves `http://127.0.0.1:5995`:
 
 ```sh
-PORTLESS_ROUTES=docs/fixtures/routes.example.json PORT=5995 node server.mjs
+node server.mjs
 ```
 
-Then open `http://127.0.0.1:5995`. The default port is `5995`, outside
-portless's own `4000-4999` app range; override with `PORT`.
+`PORTLESS_ROUTES` points it at any other routes file. The server hides
+entries whose `pid` isn't a live process, so to preview the bundled
+fixture (the one the screenshot above is rendered from), stamp its
+entries with a live pid first:
+
+```sh
+node -e 'const fs=require("fs"),r=JSON.parse(fs.readFileSync("docs/fixtures/routes.example.json","utf8"));fs.writeFileSync("/tmp/routes.json",JSON.stringify(r.map(x=>({...x,pid:+process.argv[1]}))))' $$
+PORTLESS_ROUTES=/tmp/routes.json node server.mjs
+```
+
+The default port is `5995`, outside portless's own `4000-4999` app
+range; override with `PORT`.
 
 Tests:
 
