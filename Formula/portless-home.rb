@@ -7,7 +7,7 @@ class PortlessHome < Formula
   depends_on "node"
 
   def install
-    libexec.install "server.mjs"
+    libexec.install "server.mjs", "render.mjs"
     (bin/"portless-home").write <<~SH
       #!/bin/sh
       exec "#{formula_opt_bin("node")}/node" "#{libexec}/server.mjs" "$@"
