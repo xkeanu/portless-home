@@ -64,7 +64,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           .\install.ps1 -NoAutostart
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if ($LASTEXITCODE) {
+            Get-ScheduledTaskInfo portless-home | Format-List LastRunTime, LastTaskResult
+            $dir = "$env:USERPROFILE\.portless-home"
+            Start-Process node -ArgumentList "--env-file=$dir\service.env", "$dir\server.mjs" -NoNewWindow -RedirectStandardError server-err.txt
+            Start-Sleep -Seconds 3
+            Get-Content server-err.txt
+            exit 1
+          }
           if ((Get-ScheduledTask portless-home).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
           (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/api/menubar).Content
           $tray = Start-Process powershell -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', 'tray\portless-home-tray.ps1' -PassThru
