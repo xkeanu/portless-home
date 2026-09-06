@@ -1100,3 +1100,49 @@ test('GET /api/menubar returns the xbar/SwiftBar dropdown as text: title, home l
 		live.close();
 	}
 });
+
+const getLang = (port, acceptLanguage) =>
+	new Promise((resolve, reject) => {
+		const headers = acceptLanguage === undefined ? {} : { 'Accept-Language': acceptLanguage };
+		const req = request({ host: '127.0.0.1', port, method: 'GET', headers }, (res) => {
+			let data = '';
+			res.on('data', (chunk) => (data += chunk));
+			res.on('end', () => resolve(data));
+		});
+		req.on('error', reject);
+		req.end();
+	});
+
+test('GET translates the heading, local-only label, and empty state from Accept-Language', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(routesPath, JSON.stringify([{ hostname: 'notes.localhost', port: 1, pid: process.pid }]));
+
+	process.env.PORTLESS_ROUTES = routesPath;
+	process.env.PORTLESS_NAMES = join(dir, 'names.json');
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	try {
+		const de = await getLang(port, 'de-CH,de;q=0.9,en;q=0.8');
+		assert.match(de, /<html lang="de">/);
+		assert.match(de, /<title>Dev-Apps<\/title>/);
+		assert.match(de, /<h1>Dev-Apps<\/h1>/);
+		assert.match(de, /nur lokal — notes\.localhost/);
+
+		const en = await getLang(port, undefined);
+		assert.match(en, /<html lang="en">/);
+		assert.match(en, /<h1>dev apps<\/h1>/);
+		assert.match(en, /local only — notes\.localhost/);
+
+		writeFileSync(routesPath, '[]');
+		const empty = await getLang(port, 'fr');
+		assert.match(empty, /<p class="empty">Rien ne tourne\. Lance une app via portless\.<\/p>/);
+	} finally {
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+		delete process.env.PORTLESS_NAMES;
+	}
+});
