@@ -113,7 +113,10 @@ test('plugin: prints the server menu, then a Refresh item; no service controls w
 	}
 });
 
-test('plugin: with the server up and a plist, offers Restart and Stop (xbar: shell=, SwiftBar: bash=)', async () => {
+// The plugin prints its own path; under Git Bash on Windows that is the POSIX form.
+const POSIX_PATH = { skip: process.platform === 'win32' && 'xbar/SwiftBar run on macOS' };
+
+test('plugin: with the server up and a plist, offers Restart and Stop (xbar: shell=, SwiftBar: bash=)', POSIX_PATH, async () => {
 	const { srv, base } = await textServer('⌂ 1\n---\nx\n');
 	const home = homeWithPlist('sh.portless.home');
 	try {
@@ -133,7 +136,7 @@ test('plugin: with the server up and a plist, offers Restart and Stop (xbar: she
 	}
 });
 
-test('plugin: with the server down, shows a grey title, says so, and offers Start (or an install hint)', async () => {
+test('plugin: with the server down, shows a grey title, says so, and offers Start (or an install hint)', POSIX_PATH, async () => {
 	const { srv, port } = await textServer('');
 	await new Promise((resolve) => srv.close(resolve));
 	const down = `http://127.0.0.1:${port}`;
