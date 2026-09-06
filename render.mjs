@@ -56,10 +56,12 @@ export const directory = (device, rows, peers, t = EN) =>
 		? [section(device, rows, t.empty), ...peers.filter(Boolean).map(peerSection(t))].join('')
 		: list(rows, t.empty);
 
-export const page = (body, tailnetUp, t = EN) => `<!DOCTYPE html>
+// `stamp` identifies the routes.json content behind `body` (see live.mjs).
+export const page = (body, tailnetUp, t = EN, stamp = '') => `<!DOCTYPE html>
 <html lang="${t.lang}"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark light"><meta http-equiv="refresh" content="15">
+<meta name="color-scheme" content="dark light">
+<noscript><meta http-equiv="refresh" content="15"></noscript>
 <meta name="theme-color" content="#101014">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -188,6 +190,26 @@ const drop = () => {
 };
 document.addEventListener('pointerup', drop);
 document.addEventListener('pointercancel', drop);
+// Live updates: every /events message carries the stamp of the current
+// routes.json; reload once it differs from the one this page was rendered
+// from. Also reload when the tab comes back into view (health dots and peer
+// lists are only as fresh as the last render). Without EventSource, or once
+// the stream fails, fall back to the old 15s refresh.
+const fallback = () => setTimeout(() => location.reload(), 15000);
+if (typeof EventSource === 'undefined') fallback();
+else {
+  const events = new EventSource('/events');
+  events.onmessage = (e) => {
+    if (e.data !== ${JSON.stringify(stamp)}) location.reload();
+  };
+  events.onerror = () => {
+    events.close();
+    fallback();
+  };
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') location.reload();
+});
 </script>
 </body></html>`;
 

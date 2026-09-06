@@ -10,6 +10,7 @@ import { card, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } fro
 import { readPeers, fetchPeer, snapshot } from './peers.mjs';
 import { menubar } from './menubar.mjs';
 import { strings } from './i18n.mjs';
+import { events, readText, stamp } from './live.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
@@ -17,6 +18,9 @@ const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 
 const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.portless-home', 'peers.json');
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
+
+// SSE stream for the page (see live.mjs); watches ROUTES only while a stream is open.
+const live = events(ROUTES);
 
 // Tailscale gives every node an IPv4 in 100.64.0.0/10 (CGNAT) and an IPv6 in
 // fd7a:115c:a1e0::/48; either on a non-internal interface means the tailnet is up.
@@ -95,13 +99,15 @@ const readLayout = () => {
 	return { pinned: [] };
 };
 
-const readRoutes = () => {
+const parseRoutes = (text) => {
 	try {
-		return JSON.parse(readFileSync(ROUTES, 'utf8')).filter((r) => alive(r.pid));
+		return JSON.parse(text).filter((r) => alive(r.pid));
 	} catch {
 		return [];
 	}
 };
+
+const readRoutes = () => parseRoutes(readText(ROUTES));
 
 const readBody = (req, limit = 16 * 1024) =>
 	new Promise((resolve, reject) => {
@@ -164,9 +170,9 @@ const layout = async (req, res) => {
 };
 
 // This device's running apps, pinned first, each probed for health.
-const localApps = async () => {
+const localApps = async (text = readText(ROUTES)) => {
 	const { pinned } = readLayout();
-	const routes = orderRoutes(readRoutes(), pinned);
+	const routes = orderRoutes(parseRoutes(text), pinned);
 	const up = await Promise.all(routes.map((r) => probe(r.port)));
 	return { routes, up, names: readNames(), pinned: new Set(pinned) };
 };
@@ -189,17 +195,21 @@ export const handler = async (req, res) => {
 	if (req.method === 'POST' && req.url === '/layout') return layout(req, res);
 	if (req.url === '/api/routes') return req.method === 'GET' ? api(res) : fail(res, 405);
 	if (req.url === '/api/menubar') return req.method === 'GET' ? menu(res) : fail(res, 405);
+	if (req.url === '/events') return req.method === 'GET' ? live(res) || fail(res, 503) : fail(res, 405);
 	if (req.url === '/manifest.webmanifest') return serve(res, 'application/manifest+json', MANIFEST);
 	if (req.url === '/icon.svg') return serve(res, 'image/svg+xml', ICON_SVG);
 	if (req.url === '/icon.png') return serve(res, 'image/png', ICON_PNG);
 	if (req.url === '/icon-512.png') return serve(res, 'image/png', ICON_PNG_512);
-	// Peers are fetched alongside the local probes, never after them.
-	const [{ routes, up, names, pinned }, ...peers] = await Promise.all([localApps(), ...readPeers(PEERS).map((p) => fetchPeer(p))]);
+	// Peers are fetched alongside the local probes, never after them. The page
+	// carries the stamp of the exact routes.json text it was rendered from, so
+	// the /events stream can tell it whether that is still current.
+	const text = readText(ROUTES);
+	const [{ routes, up, names, pinned }, ...peers] = await Promise.all([localApps(text), ...readPeers(PEERS).map((p) => fetchPeer(p))]);
 	// UI strings follow the browser's language (see i18n.mjs).
 	const t = strings(req.headers['accept-language']);
 	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname), true, t)).join('');
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language' });
-	res.end(page(directory(hostname(), rows, peers, t), hasTailnetAddr(networkInterfaces()), t));
+	res.end(page(directory(hostname(), rows, peers, t), hasTailnetAddr(networkInterfaces()), t, stamp(text)));
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handler).listen(PORT, '127.0.0.1');
