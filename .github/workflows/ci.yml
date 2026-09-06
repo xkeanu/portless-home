@@ -23,6 +23,8 @@ jobs:
           bash -n uninstall.sh
           sh -n menubar/portless-home.15s.sh
           ruby -c Formula/portless-home.rb
+          ruby -c Formula/portless-home-app.rb
+          sh -n macos/build.sh
       - name: smoke test
         run: |
           mkdir -p ~/.portless
@@ -32,3 +34,15 @@ jobs:
           page=$(curl -sf http://127.0.0.1:5995)
           echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
           if echo "$page" | grep -q 'dead'; then echo "dead-pid app not filtered"; exit 1; fi
+
+  macos-app:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: macos
+    steps:
+      - uses: actions/checkout@v4
+      - name: tests
+        run: swift test
+      - name: bundle
+        run: ./build.sh && test -x dist/PortlessHome.app/Contents/MacOS/PortlessHome
