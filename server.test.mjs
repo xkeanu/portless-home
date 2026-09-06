@@ -877,6 +877,13 @@ test('hasTailnetAddr accepts a CGNAT IPv4 on a Linux tailscale0 interface', () =
 	assert.equal(hasTailnetAddr(ifaces), true);
 });
 
+test('hasTailnetAddr accepts a CGNAT IPv4 on the Windows "Tailscale" adapter', () => {
+	const ifaces = {
+		Tailscale: [{ address: '100.101.102.103', family: 'IPv4', internal: false }],
+	};
+	assert.equal(hasTailnetAddr(ifaces), true);
+});
+
 test('page shows the Tailscale banner with a reconnect hint only when the tailnet is down', () => {
 	const down = page('', false);
 	assert.match(down, /<p class="banner" role="status">Tailscale not running/);

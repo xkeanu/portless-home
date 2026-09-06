@@ -28,8 +28,8 @@ export const hasTailnetAddr = (ifaces) =>
 			if (a.family === 'IPv6') return a.address.toLowerCase().startsWith('fd7a:115c:a1e0:');
 			// CGNAT space is shared, not Tailscale-exclusive: an ISP or cellular
 			// uplink can hold a 100.64.0.0/10 address too, so only trust it on a
-			// tunnel interface (macOS utunN, Linux tailscale0).
-			if (!/^(utun|tailscale)/.test(name)) return false;
+			// tunnel interface (macOS utunN, Linux tailscale0, Windows "Tailscale").
+			if (!/^(utun|tailscale)/i.test(name)) return false;
 			const [first, second] = a.address.split('.').map(Number);
 			return a.family === 'IPv4' && first === 100 && second >= 64 && second <= 127;
 		})
