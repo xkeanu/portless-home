@@ -147,7 +147,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch action {
         case .start: commands = [["bootstrap", domain, service.plist.path], ["kickstart", "\(domain)/\(service.label)"]]
         case .stop: commands = [["bootout", "\(domain)/\(service.label)"]]
-        case .restart: commands = [["kickstart", "-k", "\(domain)/\(service.label)"]]
+        // Restart also bootstraps, so it works if the service was stopped
+        // moments ago and the menu has not caught up yet.
+        case .restart: commands = [["bootstrap", domain, service.plist.path], ["kickstart", "-k", "\(domain)/\(service.label)"]]
         }
         DispatchQueue.global().async { [weak self] in
             for arguments in commands { launchctl(arguments) }
@@ -156,14 +158,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 }
 
+// Failures only go to the log (Console.app); the menu shows the resulting
+// state on the next refresh either way.
 private func launchctl(_ arguments: [String]) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
     process.arguments = arguments
     process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
-    try? process.run()
+    let stderr = Pipe()
+    process.standardError = stderr
+    do {
+        try process.run()
+    } catch {
+        return NSLog("launchctl %@: %@", arguments.joined(separator: " "), error.localizedDescription)
+    }
     process.waitUntilExit()
+    let output = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    if process.terminationStatus != 0 {
+        NSLog("launchctl %@ exited %d: %@", arguments.joined(separator: " "), process.terminationStatus, output)
+    }
 }
 
 let app = NSApplication.shared
