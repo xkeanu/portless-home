@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var service: Service?
     private var home = serverURL(environment: ProcessInfo.processInfo.environment, port: defaultPort)
     private var apps: [App]?
+    private var poll: URLSessionDataTask?
     private var entries: [Entry] = []
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
@@ -54,12 +55,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         home = serverURL(
             environment: ProcessInfo.processInfo.environment,
             port: port(fromPlist: service.flatMap { try? Data(contentsOf: $0.plist) }))
-        session.dataTask(with: home.appendingPathComponent("api/routes")) { [weak self] data, _, _ in
+        // One request in flight at a time, so a slow old poll can't overwrite
+        // a newer answer. A cancelled poll's completion is ignored.
+        poll?.cancel()
+        poll = session.dataTask(with: home.appendingPathComponent("api/routes")) { [weak self] data, _, error in
+            if (error as? URLError)?.code == .cancelled { return }
             DispatchQueue.main.async {
                 self?.apps = data.flatMap(parseApps)
                 self?.render()
             }
-        }.resume()
+        }
+        poll?.resume()
     }
 
     private func render() {
