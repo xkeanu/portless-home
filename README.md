@@ -41,8 +41,8 @@ through `tailscale serve`. Nothing is sent to any third-party service.
 
 ## Requirements
 
-- Node.js
-- macOS or Linux
+- Node.js (20.6 or newer on Windows)
+- macOS, Linux, or Windows
 - [portless](https://github.com/vercel-labs/portless) with Tailscale sharing
   (`--tailscale` or `PORTLESS_TAILSCALE=1`)
 - Tailscale connected, with MagicDNS + HTTPS Certificates enabled in your
@@ -69,6 +69,24 @@ port).
 Don't want it starting at login? `./install.sh --no-autostart` starts
 the server now but skips start-at-login (and crash restarts). Rerun
 `./install.sh` without the flag to switch back.
+
+### Windows
+
+```powershell
+git clone https://github.com/xkeanu/portless-home
+cd portless-home
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Same result, Windows-style: the server goes to `%USERPROFILE%\.portless-home\`
+and runs as a per-user scheduled task named `portless-home` (starts at
+login, restarts on crash, no console window, no admin), and the same
+`tailscale serve` rule pins it to `:443`. The task starts `node` directly
+with the config in `service.env` next to it (port and file paths), which
+is also where to look if you change the port later. `$env:PORT = 6001`
+before running the script picks the port; `-NoAutostart` is
+`--no-autostart`. The Tailscale CLI is found on `PATH` or in
+`%ProgramFiles%\Tailscale`.
 
 ### Homebrew
 
@@ -120,6 +138,25 @@ server at `/api/menubar`, in the plugin text format, and the port is read
 from the installed launchd plist (`PORTLESS_HOME_URL` overrides the
 server URL).
 
+## System tray (Windows)
+
+`tray/portless-home-tray.ps1` is the same menu as a tray icon: a house,
+green when the server is up (hover for the healthy-app count) and grey
+when it's down. Right-click for the running apps with their health dots
+and tailnet links, **Open home page**, **Start / Stop / Restart service**
+for the scheduled task, and **Exit**. It needs nothing but Windows
+PowerShell; the menu comes from the server at `/api/menubar` just like
+the macOS plugin, and the port is read from `service.env`
+(`PORTLESS_HOME_URL` overrides the server URL). Start it without a
+window:
+
+```powershell
+powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File tray\portless-home-tray.ps1
+```
+
+To have it back at every login, put a shortcut to that command in the
+Startup folder (Win+R, `shell:startup`).
+
 ## Other devices
 
 Running portless-home on more than one machine? Any instance can show
@@ -160,7 +197,7 @@ different peers file.
 ```
 
 Removes the login service, the installed files, and the `:443` serve
-rule.
+rule. On Windows: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1`.
 
 ## How it fits together
 

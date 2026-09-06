@@ -24,7 +24,7 @@ OS="$(uname)"
 case "$OS" in
 	Darwin) ;;
 	Linux) command -v systemctl >/dev/null 2>&1 || { echo "systemd required (systemctl not found)."; exit 1; } ;;
-	*) echo "Unsupported OS: $OS (macOS and Linux only)."; exit 1 ;;
+	*) echo "Unsupported OS: $OS (macOS and Linux only; on Windows run install.ps1)."; exit 1 ;;
 esac
 NODE_BIN="$(command -v node)" || { echo "node not found on PATH."; exit 1; }
 

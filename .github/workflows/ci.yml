@@ -5,11 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -24,6 +29,14 @@ jobs:
           bash -n uninstall.sh
           sh -n menubar/portless-home.15s.sh
           ruby -c Formula/portless-home.rb
+      - name: powershell syntax checks
+        shell: pwsh
+        run: |
+          foreach ($f in 'install.ps1', 'uninstall.ps1', 'tray/portless-home-tray.ps1') {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors; exit 1 }
+          }
       - name: smoke test
         run: |
           mkdir -p ~/.portless
@@ -33,3 +46,38 @@ jobs:
           page=$(curl -sf http://127.0.0.1:5995)
           echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
           if echo "$page" | grep -q 'dead'; then echo "dead-pid app not filtered"; exit 1; fi
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: tests
+        run: node --test
+      # Windows PowerShell 5.1 (`powershell`), the one every Windows box has.
+      - name: install, tray, uninstall
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\install.ps1 -NoAutostart
+          if ($LASTEXITCODE) {
+            Get-ScheduledTaskInfo portless-home | Format-List LastRunTime, LastTaskResult
+            $dir = "$env:USERPROFILE\.portless-home"
+            Start-Process node -ArgumentList "--env-file=$dir\service.env", "$dir\server.mjs" -NoNewWindow -RedirectStandardError server-err.txt
+            Start-Sleep -Seconds 3
+            Get-Content server-err.txt
+            exit 1
+          }
+          if ((Get-ScheduledTask portless-home).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
+          (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/api/menubar).Content
+          $tray = Start-Process powershell -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', 'tray\portless-home-tray.ps1' -PassThru
+          Start-Sleep -Seconds 8
+          if ($tray.HasExited) { throw "tray exited with $($tray.ExitCode)" }
+          Stop-Process $tray
+          .\uninstall.ps1
+          if (Get-ScheduledTask portless-home -ErrorAction SilentlyContinue) { throw 'task not removed' }
+          if (Test-Path "$env:USERPROFILE\.portless-home") { throw 'install dir not removed' }

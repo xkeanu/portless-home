@@ -49,7 +49,9 @@ test('probe resolves true when a real server answers HEAD', async () => {
 	await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
 	const { port } = srv.address();
 	try {
-		const result = await probe(port);
+		// The first loopback connect on a cold Windows CI runner can exceed the
+		// 300ms default; the deadline itself is covered by the tests below.
+		const result = await probe(port, 5000);
 		assert.equal(result, true);
 	} finally {
 		srv.close();
@@ -873,6 +875,13 @@ test('hasTailnetAddr ignores CGNAT addresses on non-tunnel interfaces (ISP/cellu
 test('hasTailnetAddr accepts a CGNAT IPv4 on a Linux tailscale0 interface', () => {
 	const ifaces = {
 		tailscale0: [{ address: '100.101.102.103', family: 'IPv4', internal: false }],
+	};
+	assert.equal(hasTailnetAddr(ifaces), true);
+});
+
+test('hasTailnetAddr accepts a CGNAT IPv4 on the Windows "Tailscale" adapter', () => {
+	const ifaces = {
+		Tailscale: [{ address: '100.101.102.103', family: 'IPv4', internal: false }],
 	};
 	assert.equal(hasTailnetAddr(ifaces), true);
 });
