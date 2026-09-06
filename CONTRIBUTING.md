@@ -33,7 +33,10 @@ reason in the description.
    `card()` that take data and return strings. Don't inline duplicate
    markup in the request handler — extract a function instead.
 4. **Stateless per request.** The server rereads `routes.json` on every
-   request. No caches, no watchers, no background timers.
+   request. No caches, no background timers. The one watcher (`live.mjs`,
+   behind `/events`) exists only while a page is listening: it starts with
+   the first stream and closes with the last, so an idle server holds
+   nothing.
 5. **Escape everything user-influenced.** Any value from `routes.json`
    goes through `esc()` before landing in HTML.
 

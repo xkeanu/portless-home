@@ -18,7 +18,7 @@ case "$OS" in
 		rm -f "$HOME/.config/systemd/user/portless-home.service"
 		systemctl --user daemon-reload 2>/dev/null || true
 		;;
-	*) echo "Unsupported OS: $OS (macOS and Linux only)."; exit 1 ;;
+	*) echo "Unsupported OS: $OS (macOS and Linux only; on Windows run uninstall.ps1)."; exit 1 ;;
 esac
 
 rm -rf "$INSTALL_DIR"

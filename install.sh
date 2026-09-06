@@ -24,12 +24,12 @@ OS="$(uname)"
 case "$OS" in
 	Darwin) ;;
 	Linux) command -v systemctl >/dev/null 2>&1 || { echo "systemd required (systemctl not found)."; exit 1; } ;;
-	*) echo "Unsupported OS: $OS (macOS and Linux only)."; exit 1 ;;
+	*) echo "Unsupported OS: $OS (macOS and Linux only; on Windows run install.ps1)."; exit 1 ;;
 esac
 NODE_BIN="$(command -v node)" || { echo "node not found on PATH."; exit 1; }
 
 mkdir -p "$INSTALL_DIR"
-cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$SCRIPT_DIR/i18n.mjs" "$SCRIPT_DIR/peers.mjs" "$SCRIPT_DIR/menubar.mjs" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$SCRIPT_DIR/i18n.mjs" "$SCRIPT_DIR/peers.mjs" "$SCRIPT_DIR/menubar.mjs" "$SCRIPT_DIR/live.mjs" "$INSTALL_DIR/"
 
 if [ "$AUTOSTART" = 1 ]; then AT_LOAD=true; RESTART=always; else AT_LOAD=false; RESTART=no; fi
 
