@@ -30,6 +30,8 @@ jobs:
           bash -n uninstall.sh
           sh -n menubar/portless-home.15s.sh
           ruby -c Formula/portless-home.rb
+          ruby -c Formula/portless-home-app.rb
+          sh -n macos/build.sh
       - name: powershell syntax checks
         shell: pwsh
         run: |
@@ -82,3 +84,19 @@ jobs:
           .\uninstall.ps1
           if (Get-ScheduledTask portless-home -ErrorAction SilentlyContinue) { throw 'task not removed' }
           if (Test-Path "$env:USERPROFILE\.portless-home") { throw 'install dir not removed' }
+
+  macos-app:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: macos
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: tests
+        run: swift test
+      - name: bundle
+        run: ./build.sh && test -x dist/PortlessHome.app/Contents/MacOS/PortlessHome

@@ -116,6 +116,39 @@ tailscale serve --bg --https=443 http://127.0.0.1:5995
 
 ## Menu bar (macOS)
 
+Two options: a native app, or a plugin for xbar/SwiftBar if you already
+run one of those. Both show the same menu.
+
+### Native app
+
+`macos/` is a small AppKit app (SwiftPM, no Xcode project). It puts the
+portless-home icon in the menu bar with the number of apps passing the
+health probe, and a dropdown listing every running app — ● / ○ health
+dot, click to open its tailnet URL (local-only apps are listed greyed
+out) — plus **Open home page**, **Start / Stop / Restart service** for
+the login service, and a **Launch at login** toggle. It refreshes every
+15s and whenever you open the menu; when the server is down the icon
+greys out and the menu offers **Start service**. It lives in
+`~/Applications`, so Spotlight finds it.
+
+Install with Homebrew (compiles on your machine with the Xcode Command
+Line Tools, so no Gatekeeper prompt; macOS 13+):
+
+```sh
+brew install --HEAD xkeanu/portless-home/portless-home-app
+mkdir -p ~/Applications && ln -sf "$(brew --prefix)/opt/portless-home-app/PortlessHome.app" ~/Applications/
+```
+
+Or build it from a checkout: `macos/build.sh` writes
+`macos/dist/PortlessHome.app`; move that into `~/Applications`. Tests:
+`cd macos && swift test`.
+
+The app only talks to the local server (`/api/routes`); the port is read
+from the installed launchd plist, `PORTLESS_HOME_URL` overrides the
+server URL.
+
+### xbar / SwiftBar plugin
+
 `menubar/portless-home.15s.sh` is a plugin for [xbar](https://xbarapp.com)
 or [SwiftBar](https://swiftbar.app). It puts `⌂ 3` in the menu bar (the
 number of apps passing the health probe) with a dropdown listing every
