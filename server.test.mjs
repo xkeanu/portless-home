@@ -1100,3 +1100,43 @@ test('GET /api/menubar returns the xbar/SwiftBar dropdown as text: title, home l
 		live.close();
 	}
 });
+
+test('GET /events opens a server-sent-events stream; other methods get 405', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const routesPath = join(dir, 'routes.json');
+	writeFileSync(routesPath, '[]');
+	process.env.PORTLESS_ROUTES = routesPath;
+	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
+
+	const app = createServer(handler);
+	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
+	const { port } = app.address();
+	let stream;
+	try {
+		const denied = await post(port, '/events', {});
+		assert.equal(denied.status, 405);
+		stream = await new Promise((resolve, reject) => {
+			const req = request({ host: '127.0.0.1', port, path: '/events' }, (res) => resolve({ res, req }));
+			req.on('error', reject);
+			req.end();
+		});
+		assert.equal(stream.res.statusCode, 200);
+		assert.equal(stream.res.headers['content-type'], 'text/event-stream');
+	} finally {
+		stream?.req.destroy();
+		app.close();
+		delete process.env.PORTLESS_ROUTES;
+	}
+});
+
+test('page listens on /events instead of a meta refresh, keeping the refresh for scripts-off and as a fallback', () => {
+	const html = page('', true);
+	assert.match(html, /<noscript><meta http-equiv="refresh" content="15"><\/noscript>/);
+	assert.equal(html.match(/http-equiv="refresh"/g).length, 1);
+	const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+	assert.match(script, /new EventSource\('\/events'\)/);
+	assert.match(script, /onmessage = \(\) => location\.reload\(\)/);
+	assert.match(script, /onerror/);
+	assert.match(script, /setTimeout\(\(\) => location\.reload\(\), 15000\)/);
+	assert.match(script, /visibilitychange/);
+});

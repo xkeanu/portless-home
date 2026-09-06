@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { card, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
 import { readPeers, fetchPeer, snapshot } from './peers.mjs';
 import { menubar } from './menubar.mjs';
+import { events } from './live.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
@@ -16,6 +17,9 @@ const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 
 const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.portless-home', 'peers.json');
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
+
+// SSE stream for the page (see live.mjs); watches ROUTES only while a stream is open.
+const live = events(ROUTES);
 
 // Tailscale gives every node an IPv4 in 100.64.0.0/10 (CGNAT) and an IPv6 in
 // fd7a:115c:a1e0::/48; either on a non-internal interface means the tailnet is up.
@@ -188,6 +192,7 @@ export const handler = async (req, res) => {
 	if (req.method === 'POST' && req.url === '/layout') return layout(req, res);
 	if (req.url === '/api/routes') return req.method === 'GET' ? api(res) : fail(res, 405);
 	if (req.url === '/api/menubar') return req.method === 'GET' ? menu(res) : fail(res, 405);
+	if (req.url === '/events') return req.method === 'GET' ? live(res) || fail(res, 503) : fail(res, 405);
 	if (req.url === '/manifest.webmanifest') return serve(res, 'application/manifest+json', MANIFEST);
 	if (req.url === '/icon.svg') return serve(res, 'image/svg+xml', ICON_SVG);
 	if (req.url === '/icon.png') return serve(res, 'image/png', ICON_PNG);

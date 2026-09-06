@@ -16,7 +16,8 @@ device's MagicDNS name (`:443`, `:8443`, `:8444`, …), assigned by start
 order — so from another device you never know which port an app got.
 portless-home claims `:443` with a directory page instead:
 
-- the bare device URL always shows the list, auto-refreshing every 15s
+- the bare device URL always shows the list, updating the moment an app
+  starts or stops (server-sent events; a 15s refresh if the stream fails)
 - apps land predictably on `:8443`, `:8444`, …
 - each card has a health dot: green if the app answers a local probe
   (HEAD request, 300ms timeout, all cards probed in parallel), grey if
@@ -29,11 +30,12 @@ portless-home claims `:443` with a directory page instead:
   heading per device (see [Other devices](#other-devices))
 
 It's a tiny dependency-free Node server (`server.mjs`, plus `render.mjs`
-for the HTML and `peers.mjs` for talking to other instances) reading
-portless's own `~/.portless/routes.json` on every request. Nothing to
-configure, nothing to restart when apps come and go. It listens on
-`127.0.0.1` and is only reachable from your own tailnet (and localhost)
-through `tailscale serve`. Nothing is sent to any third-party service.
+for the HTML, `peers.mjs` for talking to other instances and `live.mjs`
+for the change stream) reading portless's own `~/.portless/routes.json`
+on every request. Nothing to configure, nothing to restart when apps
+come and go. It listens on `127.0.0.1` and is only reachable from your
+own tailnet (and localhost) through `tailscale serve`. Nothing is sent
+to any third-party service.
 
 ## Requirements
 
