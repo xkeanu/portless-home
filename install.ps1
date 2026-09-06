@@ -81,6 +81,7 @@ $TailscaleUp = $false
 if ($Tailscale) { & $Tailscale status *> $null; $TailscaleUp = ($LASTEXITCODE -eq 0) }
 if ($TailscaleUp) {
 	& $Tailscale serve --bg --https=443 "http://127.0.0.1:$Port" | Out-Null
+	if ($LASTEXITCODE) { Write-Host 'tailscale serve failed; the server runs, but it is not pinned to :443.'; exit 1 }
 	$Device = (& $Tailscale status --json | ConvertFrom-Json).Self.DNSName.TrimEnd('.')
 	Write-Host "Pinned to https://$Device (persists across reboots)."
 	Write-Host 'Portless apps will now land on :8443, :8444, ...'

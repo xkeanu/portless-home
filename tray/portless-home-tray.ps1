@@ -14,7 +14,8 @@ $ProgressPreference = 'SilentlyContinue'
 
 $Task = 'portless-home'
 $Port = 5995
-$EnvFile = Join-Path $env:USERPROFILE '.portless-home\service.env'
+$InstallDir = Join-Path $env:USERPROFILE '.portless-home'
+$EnvFile = Join-Path $InstallDir 'service.env'
 if (Test-Path $EnvFile) {
 	$Found = Select-String -Path $EnvFile -Pattern '^PORT=(\d+)$' | Select-Object -First 1
 	if ($Found) { $Port = $Found.Matches[0].Groups[1].Value }
@@ -49,7 +50,7 @@ function Update-Tray {
 	try { $Script:MenuText = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 "$Url/api/menubar").Content } catch { $Script:MenuText = $null }
 	if ($Script:MenuText) {
 		$Tray.Icon = $UpIcon
-		# Line 1 is the plugin's menu bar title (e.g. "⌂ 3"); Text is capped at 63 chars.
+		# Line 1 is the plugin's menu bar title (house glyph + healthy count); Text is capped at 63 chars.
 		$Tray.Text = "portless-home $(($Script:MenuText -split "`n")[0])"
 	} else {
 		$Tray.Icon = $DownIcon
@@ -58,7 +59,15 @@ function Update-Tray {
 }
 
 function Invoke-ServiceAction($Verb) {
-	if ($Verb -ne 'start') { Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue }
+	if ($Verb -ne 'start') {
+		Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
+		# Stop returns before node has exited and freed the port (same wait as install.ps1).
+		foreach ($try in 1..25) {
+			$Old = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -like "*$InstallDir\server.mjs*" }
+			if (-not $Old) { break }
+			Start-Sleep -Milliseconds 200
+		}
+	}
 	if ($Verb -ne 'stop') { Start-ScheduledTask -TaskName $Task }
 	Start-Sleep -Seconds 1
 	Update-Tray
