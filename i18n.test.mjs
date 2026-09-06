@@ -22,6 +22,8 @@ test('pickLang honours q-weights and keeps header order on ties', () => {
 test('pickLang skips languages the client rejects with q=0 and garbage weights', () => {
 	assert.equal(pickLang('de;q=0, es;q=0.1'), 'es');
 	assert.equal(pickLang('de;q=abc, es'), 'es');
+	assert.equal(pickLang('de;q=2, es;q=0.5'), 'es');
+	assert.equal(pickLang('de;q=Infinity, es'), 'es');
 });
 
 test('strings returns the chosen language code alongside its dictionary', () => {

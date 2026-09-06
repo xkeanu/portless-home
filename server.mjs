@@ -198,7 +198,7 @@ export const handler = async (req, res) => {
 	// UI strings follow the browser's language (see i18n.mjs).
 	const t = strings(req.headers['accept-language']);
 	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname), true, t)).join('');
-	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language' });
 	res.end(page(directory(hostname(), rows, peers, t), hasTailnetAddr(networkInterfaces()), t));
 };
 

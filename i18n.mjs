@@ -12,7 +12,8 @@ export const STRINGS = {
 
 // Best supported language from an Accept-Language header: highest q wins,
 // ties keep header order, and region subtags fold into the base language
-// (en-GB → en). English when nothing matches or the header is absent.
+// (en-GB → en). Weights outside 0..1 are invalid and drop the entry. English
+// when nothing matches or the header is absent.
 export const pickLang = (header = '') =>
 	String(header)
 		.split(',')
@@ -21,7 +22,7 @@ export const pickLang = (header = '') =>
 			const q = params.find((p) => p.startsWith('q='));
 			return { lang: tag.toLowerCase().split('-')[0], q: q ? Number(q.slice(2)) : 1, i };
 		})
-		.filter((e) => Object.hasOwn(STRINGS, e.lang) && e.q > 0)
+		.filter((e) => Object.hasOwn(STRINGS, e.lang) && e.q > 0 && e.q <= 1)
 		.sort((a, b) => b.q - a.q || a.i - b.i)[0]?.lang ?? 'en';
 
 export const strings = (header) => {
