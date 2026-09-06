@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { card, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
 import { readPeers, fetchPeer, snapshot } from './peers.mjs';
 import { menubar } from './menubar.mjs';
+import { strings } from './i18n.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
@@ -194,9 +195,11 @@ export const handler = async (req, res) => {
 	if (req.url === '/icon-512.png') return serve(res, 'image/png', ICON_PNG_512);
 	// Peers are fetched alongside the local probes, never after them.
 	const [{ routes, up, names, pinned }, ...peers] = await Promise.all([localApps(), ...readPeers(PEERS).map((p) => fetchPeer(p))]);
-	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname))).join('');
-	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-	res.end(page(directory(hostname(), rows, peers), hasTailnetAddr(networkInterfaces())));
+	// UI strings follow the browser's language (see i18n.mjs).
+	const t = strings(req.headers['accept-language']);
+	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname), true, t)).join('');
+	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language' });
+	res.end(page(directory(hostname(), rows, peers, t), hasTailnetAddr(networkInterfaces()), t));
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handler).listen(PORT, '127.0.0.1');
