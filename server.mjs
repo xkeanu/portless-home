@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { card, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
 import { readPeers, fetchPeer, snapshot } from './peers.mjs';
 import { menubar } from './menubar.mjs';
+import { strings } from './i18n.mjs';
 import { events, readText, stamp } from './live.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
@@ -204,9 +205,11 @@ export const handler = async (req, res) => {
 	// the /events stream can tell it whether that is still current.
 	const text = readText(ROUTES);
 	const [{ routes, up, names, pinned }, ...peers] = await Promise.all([localApps(text), ...readPeers(PEERS).map((p) => fetchPeer(p))]);
-	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname))).join('');
-	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-	res.end(page(directory(hostname(), rows, peers), hasTailnetAddr(networkInterfaces()), stamp(text)));
+	// UI strings follow the browser's language (see i18n.mjs).
+	const t = strings(req.headers['accept-language']);
+	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname), true, t)).join('');
+	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language' });
+	res.end(page(directory(hostname(), rows, peers, t), hasTailnetAddr(networkInterfaces()), t, stamp(text)));
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handler).listen(PORT, '127.0.0.1');

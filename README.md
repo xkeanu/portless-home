@@ -28,14 +28,17 @@ portless-home claims `:443` with a directory page instead:
   dead) with the command to reconnect
 - optionally, apps from your other machines too, grouped under one
   heading per device (see [Other devices](#other-devices))
+- the page's few labels follow your browser's language (English,
+  German, Spanish, French, Portuguese, Japanese), picked from the
+  `Accept-Language` header
 
 It's a tiny dependency-free Node server (`server.mjs`, plus `render.mjs`
-for the HTML, `peers.mjs` for talking to other instances and `live.mjs`
-for the change stream) reading portless's own `~/.portless/routes.json`
-on every request. Nothing to configure, nothing to restart when apps
-come and go. It listens on `127.0.0.1` and is only reachable from your
-own tailnet (and localhost) through `tailscale serve`. Nothing is sent
-to any third-party service.
+for the HTML, `i18n.mjs` for its labels, `peers.mjs` for talking to
+other instances and `live.mjs` for the change stream) reading portless's
+own `~/.portless/routes.json` on every request. Nothing to configure,
+nothing to restart when apps come and go. It listens on `127.0.0.1` and
+is only reachable from your own tailnet (and localhost) through
+`tailscale serve`. Nothing is sent to any third-party service.
 
 ## Requirements
 

@@ -1,13 +1,17 @@
 // portless-home rendering: pure functions from data to strings, plus static assets.
+import { strings } from './i18n.mjs';
+
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // Display name: the rename override if any, else the hostname minus .localhost.
 export const displayName = (hostname, names) => names[hostname] || hostname.replace(/\.localhost$/, '');
 
+const EN = strings();
+
 // `interactive` is false for cards from other devices: rename and pin are
 // per-device, and the same hostname can exist on two devices, so peer cards
-// carry no data-host and no controls.
-export const card = (r, up, names, pinned = false, interactive = true) => {
+// carry no data-host and no controls. `t` holds the UI strings (see i18n.mjs).
+export const card = (r, up, names, pinned = false, interactive = true, t = EN) => {
 	const name = esc(displayName(r.hostname, names));
 	const host = esc(r.hostname);
 	const pin = interactive
@@ -26,7 +30,7 @@ export const card = (r, up, names, pinned = false, interactive = true) => {
 	const cls = [r.tailscaleUrl ? '' : 'local', pinned ? 'pinned' : ''].filter(Boolean).join(' ');
 	const li = `<li${cls ? ` class="${cls}"` : ''}${interactive ? ` data-host="${host}"` : ''}>`;
 	if (!r.tailscaleUrl) {
-		return `${li}${row}<span class="url">local only — ${host}</span></li>`;
+		return `${li}${row}<span class="url">${t.local} — ${host}</span></li>`;
 	}
 	return `${li}<a href="${esc(r.tailscaleUrl)}">${row}<span class="url">${esc(
 		r.tailscaleUrl.replace('https://', '')
@@ -36,26 +40,25 @@ export const card = (r, up, names, pinned = false, interactive = true) => {
 const BANNER =
 	'<p class="banner" role="status">Tailscale not running — tailnet links won&#39;t work. Reconnect: <code>tailscale up</code> or open the Tailscale app.</p>';
 
-const EMPTY_LOCAL = 'Nothing running. Start an app through portless.';
 const list = (rows, empty) => (rows ? `<ul>${rows}</ul>` : `<p class="empty">${empty}</p>`);
 const section = (device, rows, empty) => `<section><h2>${esc(device)}</h2>${list(rows, empty)}</section>`;
-const peerSection = ({ device, apps }) =>
+const peerSection = (t) => ({ device, apps }) =>
 	section(
 		device,
-		apps.map((a) => card(a, a.up, a.label ? { [a.hostname]: a.label } : {}, false, false)).join(''),
-		'Nothing running.'
+		apps.map((a) => card(a, a.up, a.label ? { [a.hostname]: a.label } : {}, false, false, t)).join(''),
+		t.peerEmpty
 	);
 
 // Page body: a bare list while no peers are configured; otherwise one section
 // per device — this one first, then every peer that answered (null = did not).
-export const directory = (device, rows, peers) =>
+export const directory = (device, rows, peers, t = EN) =>
 	peers.length
-		? [section(device, rows, EMPTY_LOCAL), ...peers.filter(Boolean).map(peerSection)].join('')
-		: list(rows, EMPTY_LOCAL);
+		? [section(device, rows, t.empty), ...peers.filter(Boolean).map(peerSection(t))].join('')
+		: list(rows, t.empty);
 
 // `stamp` identifies the routes.json content behind `body` (see live.mjs).
-export const page = (body, tailnetUp, stamp = '') => `<!DOCTYPE html>
-<html lang="en"><head>
+export const page = (body, tailnetUp, t = EN, stamp = '') => `<!DOCTYPE html>
+<html lang="${t.lang}"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
 <noscript><meta http-equiv="refresh" content="15"></noscript>
@@ -64,7 +67,7 @@ export const page = (body, tailnetUp, stamp = '') => `<!DOCTYPE html>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.png">
-<title>dev apps</title>
+<title>${t.title}</title>
 <style>
   body{font-family:ui-sans-serif,system-ui;background:#101014;color:#e6e6ea;margin:0;
     display:flex;justify-content:center;padding:48px 16px}
@@ -92,7 +95,7 @@ export const page = (body, tailnetUp, stamp = '') => `<!DOCTYPE html>
     font-size:13px;padding:12px 16px;margin:16px 0}
   .banner code{font-family:ui-monospace,monospace;color:#f0cf8e}
 </style></head>
-<body><main><h1>dev apps</h1>
+<body><main><h1>${t.title}</h1>
 ${tailnetUp ? '' : BANNER}
 ${body}
 </main>
