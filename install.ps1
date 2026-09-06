@@ -47,6 +47,8 @@ if (-not $NoAutostart) { $Register.Trigger = New-ScheduledTaskTrigger -AtLogOn -
 
 if (Get-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue) {
 	Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
+	# Stop returns before the old node has exited and freed the port.
+	foreach ($try in 1..25) { if ((Get-ScheduledTask -TaskName $Task).State -ne 'Running') { break }; Start-Sleep -Milliseconds 200 }
 	Unregister-ScheduledTask -TaskName $Task -Confirm:$false
 }
 Register-ScheduledTask @Register | Out-Null
