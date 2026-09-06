@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         environment: ProcessInfo.processInfo.environment,
         port: port(fromPlist: service.flatMap { try? Data(contentsOf: $0.plist) }))
     private var apps: [App]?
+    private var entries: [Entry] = []
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 3
@@ -59,11 +60,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func render() {
         item.button?.title = " " + title(apps: apps)
         item.button?.appearsDisabled = apps == nil
-        guard let menu = item.menu else { return }
-        menu.removeAllItems()
-        let entries = PortlessHomeCore.menu(
+        // Rebuilding while the menu is open resets its highlight, so skip no-ops.
+        let fresh = PortlessHomeCore.menu(
             apps: apps, home: home, service: service,
             launchAtLogin: SMAppService.mainApp.status == .enabled)
+        guard fresh != entries, let menu = item.menu else { return }
+        entries = fresh
+        menu.removeAllItems()
         for entry in entries { menu.addItem(menuItem(entry)) }
     }
 
@@ -75,8 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
             item.isEnabled = false
             return item
-        case .open(let title, let url):
-            return action(title, url: url)
+        case .home(let url):
+            return action("Open home page", url: url)
         case .app(let app):
             let dot = app.up ? "●" : "○"
             guard let url = app.url else {
@@ -88,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .service(let action):
             let item = NSMenuItem(title: action.rawValue, action: #selector(runService(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = action.rawValue
+            item.representedObject = action
             return item
         case .launchAtLogin(let enabled):
             let item = NSMenuItem(title: "Launch at login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
@@ -133,8 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Mirrors the plugin: bootstrap+kickstart to start, bootout to stop,
     // kickstart -k to restart. The refresh after 1s picks up the new state.
     @objc private func runService(_ sender: NSMenuItem) {
-        guard let service, let raw = sender.representedObject as? String,
-              let action = ServiceAction(rawValue: raw) else { return }
+        guard let service, let action = sender.representedObject as? ServiceAction else { return }
         let domain = "gui/\(getuid())"
         let commands: [[String]]
         switch action {
@@ -153,8 +155,8 @@ private func launchctl(_ arguments: [String]) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
     process.arguments = arguments
-    process.standardOutput = nil
-    process.standardError = nil
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
     try? process.run()
     process.waitUntilExit()
 }

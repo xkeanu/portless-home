@@ -65,7 +65,7 @@ final class ModelTests: XCTestCase {
         let web = App(label: "Web", url: URL(string: "https://mac.example.ts.net:8443"), up: true)
         let entries = menu(apps: [web], home: home, service: service, launchAtLogin: true)
         XCTAssertEqual(entries, [
-            .open(title: "Open home page", url: home), .separator,
+            .home(home), .separator,
             .app(web),
             .separator, .service(.restart), .service(.stop),
             .separator, .launchAtLogin(enabled: true), .refresh, .quit,
@@ -75,7 +75,7 @@ final class ModelTests: XCTestCase {
     func testMenuWhenUpWithNothingRunningAndNoService() {
         let entries = menu(apps: [], home: home, service: nil, launchAtLogin: false)
         XCTAssertEqual(entries, [
-            .open(title: "Open home page", url: home), .separator,
+            .home(home), .separator,
             .text("Nothing running. Start an app through portless."),
             .separator, .launchAtLogin(enabled: false), .refresh, .quit,
         ])

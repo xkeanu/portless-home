@@ -75,7 +75,7 @@ public enum ServiceAction: String, CaseIterable {
 }
 
 public enum Entry: Equatable {
-    case open(title: String, url: URL)
+    case home(URL)
     case app(App)
     case text(String)
     case service(ServiceAction)
@@ -89,7 +89,7 @@ public enum Entry: Equatable {
 public func menu(apps: [App]?, home: URL, service: Service?, launchAtLogin: Bool) -> [Entry] {
     var entries: [Entry] = []
     if let apps {
-        entries += [.open(title: "Open home page", url: home), .separator]
+        entries += [.home(home), .separator]
         entries += apps.isEmpty ? [.text("Nothing running. Start an app through portless.")] : apps.map(Entry.app)
         if service != nil { entries += [.separator, .service(.restart), .service(.stop)] }
     } else {
