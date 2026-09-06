@@ -6,6 +6,7 @@ import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let menu = NSMenu()
     private let service = Service.installed(
         agents: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents"),
         exists: { FileManager.default.fileExists(atPath: $0.path) })
@@ -23,8 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_: Notification) {
         item.button?.image = icon()
         item.button?.imagePosition = .imageLeading
-        item.menu = NSMenu()
-        item.menu?.delegate = self
+        menu.delegate = self
+        item.menu = menu
         render()
         refresh()
         Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in self?.refresh() }
@@ -64,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let fresh = PortlessHomeCore.menu(
             apps: apps, home: home, service: service,
             launchAtLogin: SMAppService.mainApp.status == .enabled)
-        guard fresh != entries, let menu = item.menu else { return }
+        guard fresh != entries else { return }
         entries = fresh
         menu.removeAllItems()
         for entry in entries { menu.addItem(menuItem(entry)) }
