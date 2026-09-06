@@ -49,7 +49,9 @@ test('probe resolves true when a real server answers HEAD', async () => {
 	await new Promise((resolve) => srv.listen(0, '127.0.0.1', resolve));
 	const { port } = srv.address();
 	try {
-		const result = await probe(port);
+		// The first loopback connect on a cold Windows CI runner can exceed the
+		// 300ms default; the deadline itself is covered by the tests below.
+		const result = await probe(port, 5000);
 		assert.equal(result, true);
 	} finally {
 		srv.close();
