@@ -65,5 +65,6 @@ jobs:
           if ($tray.HasExited) { throw "tray exited with $($tray.ExitCode)" }
           Stop-Process $tray
           .\uninstall.ps1
+          Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Format-Table ProcessId, CommandLine -AutoSize
           if (Get-ScheduledTask portless-home -ErrorAction SilentlyContinue) { throw 'task not removed' }
           if (Test-Path "$env:USERPROFILE\.portless-home") { throw 'install dir not removed' }

@@ -5,9 +5,13 @@ $InstallDir = Join-Path $env:USERPROFILE '.portless-home'
 
 if (Get-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue) {
 	Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
-	# Stop returns before node has exited, and the install dir is its working directory.
-	foreach ($try in 1..25) { if ((Get-ScheduledTask -TaskName $Task).State -ne 'Running') { break }; Start-Sleep -Milliseconds 200 }
 	Unregister-ScheduledTask -TaskName $Task -Confirm:$false
+}
+# Stop returns before node has exited, and the install dir is its working directory.
+foreach ($try in 1..25) {
+	$Server = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -like "*$InstallDir\server.mjs*" }
+	if (-not $Server) { break }
+	Start-Sleep -Milliseconds 200
 }
 if (Test-Path $InstallDir) { Remove-Item -Recurse -Force -Path $InstallDir }
 
