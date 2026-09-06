@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { card, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
 import { readPeers, fetchPeer, snapshot } from './peers.mjs';
 import { menubar } from './menubar.mjs';
-import { events } from './live.mjs';
+import { events, readText, stamp } from './live.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
@@ -98,13 +98,15 @@ const readLayout = () => {
 	return { pinned: [] };
 };
 
-const readRoutes = () => {
+const parseRoutes = (text) => {
 	try {
-		return JSON.parse(readFileSync(ROUTES, 'utf8')).filter((r) => alive(r.pid));
+		return JSON.parse(text).filter((r) => alive(r.pid));
 	} catch {
 		return [];
 	}
 };
+
+const readRoutes = () => parseRoutes(readText(ROUTES));
 
 const readBody = (req, limit = 16 * 1024) =>
 	new Promise((resolve, reject) => {
@@ -167,9 +169,9 @@ const layout = async (req, res) => {
 };
 
 // This device's running apps, pinned first, each probed for health.
-const localApps = async () => {
+const localApps = async (text = readText(ROUTES)) => {
 	const { pinned } = readLayout();
-	const routes = orderRoutes(readRoutes(), pinned);
+	const routes = orderRoutes(parseRoutes(text), pinned);
 	const up = await Promise.all(routes.map((r) => probe(r.port)));
 	return { routes, up, names: readNames(), pinned: new Set(pinned) };
 };
@@ -197,11 +199,14 @@ export const handler = async (req, res) => {
 	if (req.url === '/icon.svg') return serve(res, 'image/svg+xml', ICON_SVG);
 	if (req.url === '/icon.png') return serve(res, 'image/png', ICON_PNG);
 	if (req.url === '/icon-512.png') return serve(res, 'image/png', ICON_PNG_512);
-	// Peers are fetched alongside the local probes, never after them.
-	const [{ routes, up, names, pinned }, ...peers] = await Promise.all([localApps(), ...readPeers(PEERS).map((p) => fetchPeer(p))]);
+	// Peers are fetched alongside the local probes, never after them. The page
+	// carries the stamp of the exact routes.json text it was rendered from, so
+	// the /events stream can tell it whether that is still current.
+	const text = readText(ROUTES);
+	const [{ routes, up, names, pinned }, ...peers] = await Promise.all([localApps(text), ...readPeers(PEERS).map((p) => fetchPeer(p))]);
 	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname))).join('');
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-	res.end(page(directory(hostname(), rows, peers), hasTailnetAddr(networkInterfaces())));
+	res.end(page(directory(hostname(), rows, peers), hasTailnetAddr(networkInterfaces()), stamp(text)));
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handler).listen(PORT, '127.0.0.1');

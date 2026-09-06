@@ -7,7 +7,7 @@ class PortlessHome < Formula
   depends_on "node"
 
   def install
-    libexec.install "server.mjs", "render.mjs", "peers.mjs", "menubar.mjs"
+    libexec.install "server.mjs", "render.mjs", "peers.mjs", "menubar.mjs", "live.mjs"
     pkgshare.install "menubar"
     (bin/"portless-home").write <<~SH
       #!/bin/sh

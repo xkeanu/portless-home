@@ -53,7 +53,8 @@ export const directory = (device, rows, peers) =>
 		? [section(device, rows, EMPTY_LOCAL), ...peers.filter(Boolean).map(peerSection)].join('')
 		: list(rows, EMPTY_LOCAL);
 
-export const page = (body, tailnetUp) => `<!DOCTYPE html>
+// `stamp` identifies the routes.json content behind `body` (see live.mjs).
+export const page = (body, tailnetUp, stamp = '') => `<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
@@ -186,15 +187,18 @@ const drop = () => {
 };
 document.addEventListener('pointerup', drop);
 document.addEventListener('pointercancel', drop);
-// Live updates: reload when the server reports a routes.json change, and
-// when the tab comes back into view (health dots and peer lists are only as
-// fresh as the last render). Without EventSource, or once the stream fails,
-// fall back to the old 15s refresh.
+// Live updates: every /events message carries the stamp of the current
+// routes.json; reload once it differs from the one this page was rendered
+// from. Also reload when the tab comes back into view (health dots and peer
+// lists are only as fresh as the last render). Without EventSource, or once
+// the stream fails, fall back to the old 15s refresh.
 const fallback = () => setTimeout(() => location.reload(), 15000);
 if (typeof EventSource === 'undefined') fallback();
 else {
   const events = new EventSource('/events');
-  events.onmessage = () => location.reload();
+  events.onmessage = (e) => {
+    if (e.data !== ${JSON.stringify(stamp)}) location.reload();
+  };
   events.onerror = () => {
     events.close();
     fallback();

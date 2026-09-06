@@ -4,7 +4,7 @@ import { createServer, request } from 'node:http';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { events, watchFile } from './live.mjs';
+import { events, readText, stamp, watchFile } from './live.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -41,13 +41,24 @@ const open = (port, path) =>
 		req.end();
 	});
 
+const eventsIn = (text) => text.split('\n\n').filter(Boolean);
+
 // fs.watch shows up as FSEventWrap on macOS and FSWatcher elsewhere; closing is async.
 const watchers = () => process.getActiveResourcesInfo().filter((r) => /^FS(Event|Watch)/.test(r)).length;
+
+const noop = () => {};
+
+test('stamp is a short hex digest of the text; readText is empty for a missing file', () => {
+	assert.match(stamp('[]'), /^[0-9a-f]{12}$/);
+	assert.equal(stamp('[]'), stamp('[]'));
+	assert.notEqual(stamp('[]'), stamp('[1]'));
+	assert.equal(readText(join(tmpdir(), 'portless-home-nowhere', 'routes.json')), '');
+});
 
 test('watchFile fires once for a burst of writes and only for the watched file', async () => {
 	const file = routesFixture();
 	let hits = 0;
-	const stop = watchFile(file, () => hits++, 100);
+	const stop = watchFile(file, () => hits++, noop);
 	try {
 		// macOS FSEvents may still report the fixture write; let that settle first.
 		await wait(300);
@@ -64,7 +75,7 @@ test('watchFile fires once for a burst of writes and only for the watched file',
 	}
 });
 
-test('GET /events streams text/event-stream and sends a change event when routes.json is written', async () => {
+test('GET /events opens with the current stamp and sends the new one when routes.json is written', async () => {
 	const file = routesFixture();
 	const live = events(file);
 	const app = await listen((req, res) => live(res) || res.writeHead(503).end());
@@ -73,9 +84,12 @@ test('GET /events streams text/event-stream and sends a change event when routes
 		assert.equal(stream.status, 200);
 		assert.equal(stream.headers['content-type'], 'text/event-stream');
 		assert.equal(stream.headers['cache-control'], 'no-cache');
-		await until(() => stream.text.includes(': connected\n\n'));
-		writeFileSync(file, '[{"hostname":"demo.localhost"}]');
-		await until(() => stream.text.includes('data: change\n\n'));
+		await until(() => stream.text.includes('\n\n'));
+		assert.deepEqual(eventsIn(stream.text), [`data: ${stamp('[]')}`]);
+		const next = '[{"hostname":"demo.localhost"}]';
+		writeFileSync(file, next);
+		await until(() => eventsIn(stream.text).length === 2);
+		assert.equal(eventsIn(stream.text)[1], `data: ${stamp(next)}`);
 	} finally {
 		stream.close();
 		app.close();
@@ -101,7 +115,7 @@ test('the watcher opens with the first stream and closes with the last', async (
 		streams.push(await open(port, '/events'));
 		assert.equal(watchers(), 1);
 		writeFileSync(file, '[1]');
-		await until(() => streams[0].text.includes('data: change'));
+		await until(() => eventsIn(streams[0].text).length === 2);
 		streams.shift().close();
 		await until(() => watchers() === 0);
 	} finally {

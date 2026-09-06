@@ -1116,12 +1116,23 @@ test('GET /events opens a server-sent-events stream; other methods get 405', asy
 		const denied = await post(port, '/events', {});
 		assert.equal(denied.status, 405);
 		stream = await new Promise((resolve, reject) => {
-			const req = request({ host: '127.0.0.1', port, path: '/events' }, (res) => resolve({ res, req }));
+			const req = request({ host: '127.0.0.1', port, path: '/events' }, (res) => {
+				let text = '';
+				res.setEncoding('utf8');
+				res.on('data', (chunk) => {
+					text += chunk;
+					if (text.includes('\n\n')) resolve({ res, req, text });
+				});
+			});
 			req.on('error', reject);
 			req.end();
 		});
 		assert.equal(stream.res.statusCode, 200);
 		assert.equal(stream.res.headers['content-type'], 'text/event-stream');
+		// The page embeds the stamp of the routes.json it rendered; the stream opens with the current one.
+		const html = await get(port);
+		const [, embedded] = html.data.match(/e\.data !== "([0-9a-f]{12})"/);
+		assert.equal(stream.text, `data: ${embedded}\n\n`);
 	} finally {
 		stream?.req.destroy();
 		app.close();
@@ -1130,12 +1141,12 @@ test('GET /events opens a server-sent-events stream; other methods get 405', asy
 });
 
 test('page listens on /events instead of a meta refresh, keeping the refresh for scripts-off and as a fallback', () => {
-	const html = page('', true);
+	const html = page('', true, 'abc123def456');
 	assert.match(html, /<noscript><meta http-equiv="refresh" content="15"><\/noscript>/);
 	assert.equal(html.match(/http-equiv="refresh"/g).length, 1);
 	const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
 	assert.match(script, /new EventSource\('\/events'\)/);
-	assert.match(script, /onmessage = \(\) => location\.reload\(\)/);
+	assert.match(script, /if \(e\.data !== "abc123def456"\) location\.reload\(\)/);
 	assert.match(script, /onerror/);
 	assert.match(script, /setTimeout\(\(\) => location\.reload\(\), 15000\)/);
 	assert.match(script, /visibilitychange/);
