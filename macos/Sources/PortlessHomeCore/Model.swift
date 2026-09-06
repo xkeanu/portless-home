@@ -58,7 +58,7 @@ public func port(fromPlist data: Data?) -> Int {
     guard let data,
           let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
           let env = plist["EnvironmentVariables"] as? [String: Any],
-          let raw = env["PORT"] as? String, let port = Int(raw) else { return defaultPort }
+          let raw = env["PORT"] as? String, let port = Int(raw), (1...65535).contains(port) else { return defaultPort }
     return port
 }
 

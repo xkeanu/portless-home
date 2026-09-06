@@ -37,11 +37,15 @@ jobs:
 
   macos-app:
     runs-on: macos-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: macos
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: tests
         run: swift test
       - name: bundle

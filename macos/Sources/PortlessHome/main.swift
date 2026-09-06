@@ -7,12 +7,8 @@ import ServiceManagement
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
-    private let service = Service.installed(
-        agents: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents"),
-        exists: { FileManager.default.fileExists(atPath: $0.path) })
-    private lazy var home = serverURL(
-        environment: ProcessInfo.processInfo.environment,
-        port: port(fromPlist: service.flatMap { try? Data(contentsOf: $0.plist) }))
+    private var service: Service?
+    private var home = serverURL(environment: ProcessInfo.processInfo.environment, port: defaultPort)
     private var apps: [App]?
     private var entries: [Entry] = []
     private lazy var session: URLSession = {
@@ -50,6 +46,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refresh() {
+        // Re-resolved on every poll: the service (and its port) may be
+        // installed after the app was opened.
+        service = Service.installed(
+            agents: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents"),
+            exists: { FileManager.default.fileExists(atPath: $0.path) })
+        home = serverURL(
+            environment: ProcessInfo.processInfo.environment,
+            port: port(fromPlist: service.flatMap { try? Data(contentsOf: $0.plist) }))
         session.dataTask(with: home.appendingPathComponent("api/routes")) { [weak self] data, _, _ in
             DispatchQueue.main.async {
                 self?.apps = data.flatMap(parseApps)

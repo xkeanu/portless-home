@@ -40,6 +40,8 @@ final class ModelTests: XCTestCase {
         </dict></plist>
         """
         XCTAssertEqual(port(fromPlist: Data(plist.utf8)), 6001)
+        XCTAssertEqual(port(fromPlist: Data(plist.replacingOccurrences(of: "6001", with: "0").utf8)), 5995)
+        XCTAssertEqual(port(fromPlist: Data(plist.replacingOccurrences(of: "6001", with: "65536").utf8)), 5995)
         XCTAssertEqual(port(fromPlist: nil), 5995)
         XCTAssertEqual(port(fromPlist: Data("garbage".utf8)), 5995)
         XCTAssertEqual(port(fromPlist: Data("<plist version=\"1.0\"><dict><key>Label</key><string>x</string></dict></plist>".utf8)), 5995)
