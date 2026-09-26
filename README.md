@@ -37,8 +37,9 @@ for the HTML, `i18n.mjs` for its labels, `peers.mjs` for talking to
 other instances and `live.mjs` for the change stream) reading portless's
 own `~/.portless/routes.json` on every request. Nothing to configure,
 nothing to restart when apps come and go. It listens on `127.0.0.1` and
-is only reachable from your own tailnet (and localhost) through
-`tailscale serve`. Nothing is sent to any third-party service.
+is reachable through `tailscale serve` according to your tailnet's access
+policy, including users you explicitly share the host with, and on localhost.
+Nothing is sent to any third-party service.
 
 ## Requirements
 
@@ -223,6 +224,11 @@ probe result, and `tailscaleUrl` is absent for local-only apps. The
 endpoint only ever lists the device it runs on, so two instances
 listing each other can't loop. `PORTLESS_PEERS` points the server at a
 different peers file.
+
+For access across tailnets or outside Tailscale, see the
+[sharing research](docs/tailnet-sharing.md). The directory does not filter
+entries by viewer: anyone with access can see the peer summaries the server
+fetches, even when they cannot open those apps themselves.
 
 ## Uninstall
 
