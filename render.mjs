@@ -1,71 +1,17 @@
-// portless-home rendering: pure functions from data to strings, plus static assets.
+// The Svelte renderer and browser runtime are bundled at build time.
+import { renderDirectory } from './dist/ui-server.mjs';
 import { strings } from './i18n.mjs';
 
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
-
-// Display name: the rename override if any, else the hostname minus .localhost.
 export const displayName = (hostname, names) => names[hostname] || hostname.replace(/\.localhost$/, '');
 
-const EN = strings();
+// JSON lives in a script element, so an untrusted label must never close it.
+const pageData = (model) => JSON.stringify(model).replace(/</g, '\\u003c');
 
-// `interactive` is false for cards from other devices: rename and pin are
-// per-device, and the same hostname can exist on two devices, so peer cards
-// carry no data-host and no controls. `t` holds the UI strings (see i18n.mjs).
-export const card = (r, up, names, pinned = false, interactive = true, t = EN) => {
-	const name = esc(displayName(r.hostname, names));
-	const host = esc(r.hostname);
-	const pin = interactive
-		? `<span class="pin${pinned ? ' pinned' : ''}" data-host="${host}" role="button" tabindex="0" aria-pressed="${pinned}" aria-label="${pinned ? 'unpin' : 'pin'}">${pinned ? '★' : '☆'}</span>`
-		: '';
-	// Only pinned cards get a reorder handle: unpinned cards keep routes.json order.
-	const handle = interactive && pinned
-		? '<span class="handle" role="button" tabindex="0" aria-label="reorder: drag, or arrow keys">⠿</span>'
-		: '';
-	const label = interactive
-		? `<span class="name" data-host="${host}" role="button" tabindex="0">${name}</span>`
-		: `<span class="name">${name}</span>`;
-	const row = `<span class="row"><span class="${up ? 'dot up' : 'dot'}" role="img" aria-label="${
-		up ? 'online' : 'offline'
-	}"></span>${label}${handle}${pin}</span>`;
-	const cls = [r.tailscaleUrl ? '' : 'local', pinned ? 'pinned' : ''].filter(Boolean).join(' ');
-	const li = `<li${cls ? ` class="${cls}"` : ''}${interactive ? ` data-host="${host}"` : ''}>`;
-	if (!r.tailscaleUrl) {
-		return `${li}${row}<span class="url">${t.local} — ${host}</span></li>`;
-	}
-	return `${li}<a href="${esc(r.tailscaleUrl)}">${row}<span class="url">${esc(
-		r.tailscaleUrl.replace('https://', '')
-	)}</span></a></li>`;
-};
-
-const BANNER =
-	'<p class="banner" role="status">Tailscale not running — tailnet links won&#39;t work. Reconnect: <code>tailscale up</code> or open the Tailscale app.</p>';
-
-export const launchCard = (hostname, names, state, t = EN) => {
-	const starting = state === 'starting';
-	return `<li class="registered"><span class="row"><span class="name">${esc(displayName(hostname, names))}</span>` +
-		`<button type="button" class="start" data-start="${esc(hostname)}"${starting ? ' disabled' : ''}>${starting ? t.starting : t.start}</button></span>` +
-		`<span class="launch-status" role="status">${state === 'failed' ? t.startFailed : starting ? t.starting : t.stopped}</span></li>`;
-};
-
-const list = (rows, empty) => (rows ? `<ul>${rows}</ul>` : `<p class="empty">${empty}</p>`);
-const section = (device, rows, empty) => `<section><h2>${esc(device)}</h2>${list(rows, empty)}</section>`;
-const peerSection = (t) => ({ device, apps }) =>
-	section(
-		device,
-		apps.map((a) => card(a, a.up, a.label ? { [a.hostname]: a.label } : {}, false, false, t)).join(''),
-		t.peerEmpty
-	);
-
-// Page body: a bare list while no peers are configured; otherwise one section
-// per device — this one first, then every peer that answered (null = did not).
-export const directory = (device, rows, peers, t = EN) =>
-	peers.length
-		? [section(device, rows, t.empty), ...peers.filter(Boolean).map(peerSection(t))].join('')
-		: list(rows, t.empty);
-
-// `stamp` identifies the routes.json content behind `body` (see live.mjs).
-export const page = (body, tailnetUp, t = EN, stamp = '') => `<!DOCTYPE html>
-<html lang="${t.lang}"><head>
+export const page = (data = {}) => {
+	const model = { device: '', routes: [], peers: [], registered: [], tailnetUp: true, t: strings(), stamp: '', ...data };
+	return `<!DOCTYPE html>
+<html lang="${esc(model.t.lang)}"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
 <noscript><meta http-equiv="refresh" content="15"></noscript>
@@ -74,177 +20,13 @@ export const page = (body, tailnetUp, t = EN, stamp = '') => `<!DOCTYPE html>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.png">
-<title>${t.title}</title>
-<style>
-  body{font-family:ui-sans-serif,system-ui;background:#101014;color:#e6e6ea;margin:0;
-    display:flex;justify-content:center;padding:48px 16px}
-  main{width:100%;max-width:420px}
-  h1{font-size:14px;font-weight:500;color:#8a8a94;letter-spacing:.08em;text-transform:uppercase}
-  h2{font-size:12px;font-weight:500;color:#5e5e68;letter-spacing:.08em;text-transform:uppercase;margin:28px 0 8px}
-  section>ul,section>.empty{margin-top:0}
-  ul{list-style:none;padding:0;margin:16px 0}
-  li a,li.local{display:flex;flex-direction:column;gap:2px;padding:14px 16px;margin-bottom:8px;
-    background:#1a1a20;border:1px solid #2a2a32;border-radius:10px;text-decoration:none}
-  li.local{opacity:.5}
-  li a:active{background:#22222a}
-  .row{display:flex;align-items:center;gap:8px}
-  .dot{width:8px;height:8px;border-radius:50%;background:#4a4a54;flex:none}
-  .dot.up{background:#34c759}
-  .name{color:#e6e6ea;font-size:16px;font-weight:600}
-  .pin{margin-left:auto;color:#4a4a54;font-size:15px;padding:0 2px;cursor:pointer}
-  .pin.pinned{color:#e8b761}
-  .handle{margin-left:auto;color:#4a4a54;font-size:14px;padding:0 2px;cursor:grab;touch-action:none}
-  .handle~.pin{margin-left:0}
-  li.drag{opacity:.5;pointer-events:none}
-  .url{color:#8a8a94;font-size:12px;font-family:ui-monospace,monospace}
-  .empty{color:#8a8a94;font-size:14px}
-  .banner{background:#2a2014;border:1px solid #574018;border-radius:10px;color:#e8b761;
-    font-size:13px;padding:12px 16px;margin:16px 0}
-  .banner code{font-family:ui-monospace,monospace;color:#f0cf8e}
-  li.registered{padding:14px 16px;margin-bottom:8px;background:#1a1a20;border:1px solid #2a2a32;border-radius:10px}
-  .registered .name{color:#a4a4ae;overflow-wrap:anywhere;min-width:0}
-  .start{margin-left:auto;min-height:44px;padding:8px 14px;flex:none;font:inherit;color:#e6e6ea;background:#2a2a32;border:1px solid #6e6e7a;border-radius:6px;cursor:pointer}
-  .start:hover{background:#383842}
-  .start:active{background:#454550}
-  .start:focus-visible{outline:2px solid #e8b761;outline-offset:3px}
-  .start:disabled{color:#a4a4ae;cursor:wait}
-  .launch-status{display:block;margin-top:4px;color:#a4a4ae;font-size:13px;overflow-wrap:anywhere}
-</style></head>
-<body><main><h1>${t.title}</h1>
-${tailnetUp ? '' : BANNER}
-${body}
-</main>
-<script>
-document.querySelectorAll('[data-start]').forEach((button) => {
-  button.addEventListener('click', async () => {
-    button.disabled = true;
-    const status = button.closest('li').querySelector('[role="status"]');
-    status.textContent = ${JSON.stringify(t.starting)};
-    try {
-      const response = await fetch('/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostname: button.dataset.start }),
-      });
-      if (response.ok || response.status === 409) { location.reload(); return; }
-    } catch {}
-    status.textContent = ${JSON.stringify(t.startFailed)};
-    button.disabled = false;
-  });
-});
-if (document.querySelector('[data-start]:disabled')) setTimeout(() => location.reload(), 2000);
-document.querySelectorAll('.name[data-host]').forEach((el) => {
-  const rename = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const label = prompt('Rename', el.textContent);
-    if (label === null) return;
-    fetch('/rename', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostname: el.dataset.host, label }),
-    }).then((r) => (r.ok ? location.reload() : alert('Rename failed'))).catch(() => alert('Rename failed'));
-  };
-  el.addEventListener('click', rename);
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') rename(e);
-  });
-});
-const pinnedHosts = () => [...document.querySelectorAll('li.pinned')].map((li) => li.dataset.host);
-// reload after pinning (the card moves and re-renders); a plain reorder already
-// shows the right order, so saving silently keeps keyboard focus alive.
-// Saves chain on the previous one: /layout is read-merge-write, so two
-// in-flight snapshots could land out of order and revive a stale order.
-let saving = Promise.resolve();
-const saveLayout = (pinned, reload) => {
-  saving = saving.then(() =>
-    fetch('/layout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pinned }),
-    }).then((r) => {
-      if (!r.ok) alert('Save failed');
-      else if (reload) location.reload();
-    }).catch(() => alert('Save failed'))
-  );
-};
-document.querySelectorAll('.pin').forEach((el) => {
-  const toggle = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const host = el.dataset.host;
-    const pinned = pinnedHosts();
-    saveLayout(pinned.includes(host) ? pinned.filter((h) => h !== host) : [...pinned, host], true);
-  };
-  el.addEventListener('click', toggle);
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') toggle(e);
-  });
-});
-// Reorder via the ⠿ handle: pointer events cover mouse and touch alike
-// (HTML5 drag-and-drop never fires on mobile), arrow keys cover keyboards.
-let drag = null;
-document.querySelectorAll('li.pinned .handle').forEach((el) => {
-  const li = el.closest('li');
-  el.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
-  el.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-    e.preventDefault();
-    const sib = e.key === 'ArrowUp' ? li.previousElementSibling : li.nextElementSibling;
-    if (!sib || !sib.classList.contains('pinned')) return;
-    li.parentNode.insertBefore(li, e.key === 'ArrowUp' ? sib : sib.nextSibling);
-    el.focus();
-    saveLayout(pinnedHosts(), false);
-  });
-  el.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    drag = { li, before: pinnedHosts().join() };
-    li.classList.add('drag');
-  });
-});
-// Track the drag on document: moving the <li> releases pointer capture
-// (a DOM move counts as removal), so handle-scoped listeners would go quiet.
-document.addEventListener('pointermove', (e) => {
-  if (!drag) return;
-  // li.drag has pointer-events:none, so this hits the card underneath.
-  const over = document.elementFromPoint(e.clientX, e.clientY)?.closest('li.pinned');
-  if (!over || over === drag.li) return;
-  const below = e.clientY > over.getBoundingClientRect().top + over.offsetHeight / 2;
-  over.parentNode.insertBefore(drag.li, below ? over.nextSibling : over);
-});
-const drop = () => {
-  if (!drag) return;
-  drag.li.classList.remove('drag');
-  if (pinnedHosts().join() !== drag.before) saveLayout(pinnedHosts(), false);
-  drag = null;
-};
-document.addEventListener('pointerup', drop);
-document.addEventListener('pointercancel', drop);
-// Live updates: every /events message carries the stamp of the current
-// routes.json; reload once it differs from the one this page was rendered
-// from. Also reload when the tab comes back into view (health dots and peer
-// lists are only as fresh as the last render). Without EventSource, or once
-// the stream fails, fall back to the old 15s refresh.
-const fallback = () => setTimeout(() => location.reload(), 15000);
-if (typeof EventSource === 'undefined') fallback();
-else {
-  const events = new EventSource('/events');
-  events.onmessage = (e) => {
-    if (e.data !== ${JSON.stringify(stamp)}) location.reload();
-  };
-  events.onerror = () => {
-    events.close();
-    fallback();
-  };
-}
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') location.reload();
-});
-</script>
+<link rel="stylesheet" href="/assets/ui.css">
+<title>${esc(model.t.title)}</title>
+</head><body><div id="directory">${renderDirectory(model)}</div>
+<script id="page-data" type="application/json">${pageData(model)}</script>
+<script type="module" src="/assets/ui.js"></script>
 </body></html>`;
+};
 
 export const MANIFEST = JSON.stringify({
 	name: 'dev apps', short_name: 'dev apps', start_url: '/', display: 'standalone',

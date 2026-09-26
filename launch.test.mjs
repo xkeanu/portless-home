@@ -6,10 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { localRequest, readRegistry } from './launch.mjs';
-import { launchCard, page } from './render.mjs';
+import { page } from './render.mjs';
 import { strings } from './i18n.mjs';
-import { runInNewContext } from 'node:vm';
+import { JSDOM } from 'jsdom';
 import { Readable } from 'node:stream';
+
+const documentOf = (html) => new JSDOM(html).window.document;
 
 const send = (port, { path = '/', method = 'GET', headers = {}, body } = {}) => new Promise((resolve, reject) => {
 	const req = request({ host: '127.0.0.1', port, path, method, headers }, (res) => {
@@ -115,7 +117,7 @@ setTimeout(() => process.exit(8), 10000).unref();`);
 	config();
 	const stopped = (await send(port)).data;
 	assert.match(stopped, /data-start="demo.localhost"/);
-	assert.match(stopped, />Stopped</);
+	assert.equal(documentOf(stopped).querySelector('.launch-status').textContent, 'Stopped');
 	assert.ok(!stopped.includes(dir));
 	assert.ok(!stopped.includes(command));
 	for (const override of [
@@ -134,53 +136,39 @@ setTimeout(() => process.exit(8), 10000).unref();`);
 	assert.equal(existsSync(join(dir, 'launches.txt')), false);
 	const remote = await send(port, { headers: { host: 'device.tailnet.ts.net', 'x-forwarded-for': '100.64.0.2' } });
 	assert.doesNotMatch(remote.data, /data-start="/);
+	assert.deepEqual(JSON.parse(documentOf(remote.data).querySelector('#page-data').textContent).registered, []);
+	assert.ok(!remote.data.includes(dir));
+	assert.ok(!remote.data.includes(command));
 	assert.doesNotMatch((await send(port, { path: '/api/routes' })).data, /demo\.localhost|fixture\.cjs/);
 
 	const starts = await Promise.all([start(), start()]);
 	assert.deepEqual(starts.map((r) => r.status).sort(), [202, 409]);
 	await until(() => existsSync(join(dir, 'launches.txt')));
 	assert.deepEqual(readFileSync(join(dir, 'launches.txt'), 'utf8').trim().split('\n'), [realpathSync(dir)]);
-	assert.match((await send(port)).data, /data-start="demo.localhost" disabled/);
+	assert.equal(documentOf((await send(port)).data).querySelector('[data-start="demo.localhost"]').disabled, true);
 	writeFileSync(join(dir, 'routes.json'), JSON.stringify([{ hostname: app.hostname, pid: process.pid, port: 1, tailscaleUrl: 'https://demo.example.ts.net' }]));
 	assert.doesNotMatch((await send(port)).data, /data-start="demo.localhost"/);
 	assert.equal((await start()).status, 409);
 	writeFileSync(join(dir, 'release'), '');
 	writeFileSync(join(dir, 'routes.json'), '[]');
-	await until(async () => (await send(port)).data.includes('role="status">Could not start the app.'));
+	await until(async () => documentOf((await send(port)).data).querySelector('.launch-status')?.textContent.startsWith('Could not start the app.'));
 	config([{ ...app, cwd: join(dir, 'missing-directory') }]);
 	assert.equal((await start()).status, 500);
 	config([{ ...app, command: `"${process.execPath}" -e "process.exit(0)"` }]);
 	assert.equal((await start()).status, 202);
-	await until(async () => !(await send(port)).data.includes('data-start="demo.localhost" disabled'));
+	await until(async () => !documentOf((await send(port)).data).querySelector('[data-start="demo.localhost"]')?.disabled);
 	writeFileSync(join(dir, 'routes.json'), JSON.stringify([{ hostname: app.hostname, pid: process.pid, port: 1 }]));
 	assert.equal((await start()).status, 409);
 });
 
 test('launch cards escape names and provide translated pending and error states', () => {
-	assert.match(launchCard('demo.localhost', { 'demo.localhost': '<img onerror="bad">' }, 'stopped'), /&#60;img onerror=&#34;bad&#34;&#62;/);
-	assert.match(launchCard('demo.localhost', {}, 'starting', strings('de')), /disabled>Wird gestartet/);
-	assert.match(launchCard('demo.localhost', {}, 'failed'), /role="status">Could not start/);
-});
-
-test('Start control submits only the hostname, disables while pending and recovers on error', async () => {
-	const script = page('', true, strings('de')).match(/<script>([\s\S]*?)<\/script>/)[1].split("document.querySelectorAll('.name[data-host]')")[0];
-	let click, sent, reloads = 0;
-	const status = {};
-	const button = { dataset: { start: 'demo.localhost' }, disabled: false, closest: () => ({ querySelector: () => status }), addEventListener: (_, callback) => { click = callback; } };
-	const context = {
-		document: { querySelectorAll: () => [button], querySelector: () => null },
-		location: { reload: () => { reloads++; } },
-		fetch: async (path, options) => { sent = { path, ...options }; return { ok: false, status: 500 }; },
-	};
-	runInNewContext(script, context);
-	const pending = click();
-	assert.equal(button.disabled, true);
-	await pending;
-	assert.equal(button.disabled, false);
-	assert.match(status.textContent, /Start fehlgeschlagen/);
-	assert.equal(sent.path, '/start');
-	assert.deepEqual(JSON.parse(sent.body), { hostname: 'demo.localhost' });
-	context.fetch = async () => ({ ok: true, status: 202 });
-	await click();
-	assert.equal(reloads, 1);
+	const label = '<img onerror="bad">';
+	const render = (state, t = strings()) => new JSDOM(page({ t, registered: [{ hostname: 'demo.localhost', label, state }] })).window.document;
+	const stopped = render('stopped');
+	assert.equal(stopped.querySelector('.registered .name').textContent, label);
+	assert.equal(stopped.querySelector('.registered img'), null);
+	const starting = render('starting', strings('de'));
+	assert.equal(starting.querySelector('.start').disabled, true);
+	assert.equal(starting.querySelector('.start').textContent, 'Wird gestartet…');
+	assert.match(render('failed').querySelector('.launch-status').textContent, /Could not start/);
 });

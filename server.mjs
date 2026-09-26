@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { card, launchCard, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
+import { displayName, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
 import { readPeers, fetchPeer, snapshot } from './peers.mjs';
 import { menubar } from './menubar.mjs';
 import { strings } from './i18n.mjs';
@@ -205,7 +205,20 @@ const menu = async (res) => {
 	serve(res, 'text/plain; charset=utf-8', menubar(routes, up, names, `http://127.0.0.1:${PORT}/`));
 };
 
+const assets = new Map([
+	['/assets/ui.js', ['ui.js', 'text/javascript; charset=utf-8']],
+	['/assets/ui.css', ['ui.css', 'text/css; charset=utf-8']],
+]);
+
 export const handler = async (req, res) => {
+	if (req.url?.startsWith('/assets/')) {
+		const asset = assets.get(req.url);
+		if (!asset) return fail(res, 404);
+		if (req.method !== 'GET' && req.method !== 'HEAD') return fail(res, 405);
+		const body = readFileSync(new URL(`./dist/${asset[0]}`, import.meta.url));
+		res.writeHead(200, { 'Content-Type': asset[1], 'Content-Length': body.length, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+		return res.end(req.method === 'HEAD' ? undefined : body);
+	}
 	if (req.url === '/start') return req.method === 'POST' ? start(req, res) : fail(res, 405);
 	if (req.method === 'POST' && req.url === '/rename') return rename(req, res);
 	if (req.method === 'POST' && req.url === '/layout') return layout(req, res);
@@ -224,10 +237,17 @@ export const handler = async (req, res) => {
 	// UI strings follow the browser's language (see i18n.mjs).
 	const t = strings(req.headers['accept-language']);
 	const stopped = localRequest(req) ? readRegistry(APPS).filter((a) => !routes.some((r) => r.hostname === a.hostname)) : [];
-	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname), true, t)).join('') +
-		stopped.map((a) => launchCard(a.hostname, names, launches.state(a.hostname), t)).join('');
-	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language' });
-	res.end(page(directory(hostname(), rows, peers, t), hasTailnetAddr(networkInterfaces()), t, stamp(text)));
+	const model = {
+		device: hostname(),
+		routes: routes.map((r, i) => ({
+			hostname: r.hostname, tailscaleUrl: r.tailscaleUrl,
+			label: displayName(r.hostname, names), up: up[i], pinned: pinned.has(r.hostname),
+		})),
+		registered: stopped.map((a) => ({ hostname: a.hostname, label: displayName(a.hostname, names), state: launches.state(a.hostname) })),
+		peers, tailnetUp: hasTailnetAddr(networkInterfaces()), t, stamp: stamp(text),
+	};
+	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language', 'Cache-Control': 'no-store' });
+	res.end(page(model));
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) createServer(handler).listen(PORT, '127.0.0.1');
