@@ -114,6 +114,63 @@ yourself (once; it persists across reboots):
 tailscale serve --bg --https=443 http://127.0.0.1:5995
 ```
 
+## Start registered apps locally
+
+To keep stopped apps on the page, create `~/.portless-home/apps.json`
+with explicit opt-in and commands you trust:
+
+```json
+{
+  "enabled": true,
+  "apps": [
+    {
+      "hostname": "demo.localhost",
+      "cwd": "/absolute/path/to/demo",
+      "command": "portless demo npm run dev"
+    }
+  ]
+}
+```
+
+On Windows, use an absolute path such as `C:\\Users\\you\\code\\demo`.
+`PORTLESS_APPS` overrides the registry path. Changes take effect on the
+next page load, without restarting the server. Missing, disabled, or
+invalid configuration turns off the launcher. Hostnames must be unique
+and match the app's Portless route.
+
+Open `http://127.0.0.1:5995` or `http://localhost:5995` on the server's
+machine. Stopped entries have a **Start** button. The page disables it
+while the command runs and switches to the running route when Portless
+registers it. A failed command shows an error and allows another attempt.
+For details, run the configured command in a terminal; this launcher
+does not capture logs. If you edit the registry while viewing the page,
+reload to see the change.
+
+Commands run through the operating system's shell, as the server's user,
+with the server's environment and the configured working directory.
+Use foreground commands, without `&`, daemonization, or interactive
+prompts. Login services may have a different `PATH` from your terminal;
+use absolute executable paths when needed. Starting an app never accepts
+a command or working directory from the browser.
+
+The launcher accepts only direct loopback requests with matching local
+Host and Origin headers. Proxy and cross-site requests are rejected.
+Start controls and stopped entries are absent from tailnet pages and
+peer APIs. This is a local-machine boundary, not authentication between
+local users: other programs on the machine can submit local requests.
+Protect the registry as carefully as your shell scripts. On macOS and
+Linux, its file must belong to the server's user and must not be writable
+by group or other users (`chmod 600 ~/.portless-home/apps.json`). On
+Windows, use file permissions that allow only your account to edit it.
+
+Duplicate starts are rejected while this server tracks the launched
+process, or while a live route with that hostname exists. Started apps
+can outlive the directory server. If you restart the directory during
+startup, wait for the app's route before trying again. There are no stop
+controls, automatic starts, or restart policies. Delete the registry or
+set `enabled` to `false` to disable future launches; this does not stop
+apps already started.
+
 ## Menu bar (macOS)
 
 Two options: a native app, or a plugin for xbar/SwiftBar if you already

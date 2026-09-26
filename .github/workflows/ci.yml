@@ -26,6 +26,7 @@ jobs:
           node --check menubar.mjs
           node --check i18n.mjs
           node --check live.mjs
+          node --check launch.mjs
           bash -n install.sh
           bash -n uninstall.sh
           sh -n menubar/portless-home.15s.sh
