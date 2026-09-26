@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { request } from 'node:http';
+import { fileURLToPath } from 'node:url';
 
 const fail = (message) => {
 	throw new Error(message);
@@ -23,16 +24,62 @@ const get = (port, path) =>
 		req.end();
 	});
 
-const waitForServer = async (port, child) => {
+const waitForServer = async (port, child, stderr) => {
 	for (let attempt = 0; attempt < 50; attempt++) {
-		if (child.exitCode !== null) fail(`Packaged server exited with ${child.exitCode}.`);
+		if (child.exitCode !== null) fail(`Packaged server exited with ${child.exitCode}: ${stderr()}`);
 		try {
 			return await get(port, '/');
 		} catch {
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}
 	}
-	fail('Packaged server did not start.');
+	fail(`Packaged server did not start: ${stderr()}`);
+};
+
+const startServer = async (app, env) => {
+	const program = [
+		"import { createServer } from 'node:http';",
+		"import { handler } from './server.mjs';",
+		"const server = createServer(handler);",
+		"server.listen(0, '127.0.0.1', () => process.stdout.write(String(server.address().port) + '\\n'));",
+	].join(' ');
+	const child = spawn(process.execPath, ['--input-type=module', '--eval', program], { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'] });
+	let stderr = '';
+	child.stderr.on('data', (chunk) => (stderr += chunk));
+	let port;
+	try {
+		port = await new Promise((resolve, reject) => {
+			let output = '';
+			const timeout = setTimeout(() => reject(new Error(`Packaged server did not choose a port: ${stderr}`)), 5000);
+			child.stdout.on('data', (chunk) => {
+				output += chunk;
+				const match = output.match(/^(\d+)\n/);
+				if (match) {
+					clearTimeout(timeout);
+					resolve(Number(match[1]));
+				}
+			});
+			child.once('error', (error) => {
+				clearTimeout(timeout);
+				reject(error);
+			});
+			child.once('exit', (code, signal) => {
+				clearTimeout(timeout);
+				reject(new Error(`Packaged server exited before listening (${code ?? signal}): ${stderr}`));
+			});
+		});
+	} catch (error) {
+		await stopServer(child);
+		throw error;
+	}
+	return { child, port, stderr: () => stderr };
+};
+
+const stopServer = async (child) => {
+	if (child.exitCode !== null) return;
+	const exited = new Promise((resolve) => child.once('exit', resolve));
+	child.kill('SIGTERM');
+	await exited;
 };
 
 export const smokeArchive = async (archive) => {
@@ -51,41 +98,51 @@ export const smokeArchive = async (archive) => {
 			if (directory === temp) break;
 		}
 		const routes = join(temp, 'routes.json');
+		const names = join(temp, 'names.json');
+		const layout = join(temp, 'layout.json');
+		const peers = join(temp, 'peers.json');
+		const apps = join(temp, 'apps.json');
 		writeFileSync(routes, JSON.stringify([{ hostname: 'fixture.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://fixture.example.ts.net' }]));
-		const port = 6100 + Math.floor(Math.random() * 3000);
-		const child = spawn(process.execPath, ['server.mjs'], {
-			cwd: app,
-			env: { ...process.env, PORT: String(port), PORTLESS_ROUTES: routes },
-			stdio: 'ignore',
+		writeFileSync(peers, JSON.stringify({ peers: [] }));
+		writeFileSync(apps, JSON.stringify({ enabled: false, apps: [] }));
+		const server = await startServer(app, {
+			...process.env,
+			PORTLESS_ROUTES: routes,
+			PORTLESS_NAMES: names,
+			PORTLESS_LAYOUT: layout,
+			PORTLESS_PEERS: peers,
+			PORTLESS_APPS: apps,
 		});
 		try {
-			const page = await waitForServer(port, child);
+			const page = await waitForServer(server.port, server.child, server.stderr);
 			assert.equal(page.status, 200);
 			assert.match(page.body, /fixture/);
 			assert.match(page.body, /(?:src|href)="\/assets\/ui\.(?:js|css)"/);
-			const script = await get(port, '/assets/ui.js');
+			const script = await get(server.port, '/assets/ui.js');
 			assert.equal(script.status, 200);
 			assert.match(script.headers['content-type'] || '', /javascript/);
 			assert.ok(script.body.length > 0, 'ui.js was empty');
-			const css = await get(port, '/assets/ui.css');
+			const css = await get(server.port, '/assets/ui.css');
 			assert.equal(css.status, 200);
 			assert.match(css.headers['content-type'] || '', /text\/css/);
 			assert.ok(css.body.length > 0, 'ui.css was empty');
 		} finally {
-			child.kill('SIGTERM');
+			await stopServer(server.child);
 		}
 	} finally {
 		rmSync(temp, { recursive: true, force: true });
 	}
 };
 
-const archive = process.argv[2];
-if (archive) {
-	smokeArchive(archive).catch((error) => {
-		console.error(error.stack || error.message);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+	const archive = process.argv[2];
+	if (archive) {
+		smokeArchive(archive).catch((error) => {
+			console.error(error.stack || error.message);
+			process.exitCode = 1;
+		});
+	} else {
+		console.error('Usage: node scripts/release-smoke.mjs path/to/portless-home-v1.2.3.tar.gz');
 		process.exitCode = 1;
-	});
-} else if (process.argv[1] && process.argv[1].endsWith('release-smoke.mjs')) {
-	console.error('Usage: node scripts/release-smoke.mjs path/to/portless-home-v1.2.3.tar.gz');
-	process.exitCode = 1;
+	}
 }

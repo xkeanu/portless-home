@@ -53,8 +53,23 @@ Nothing is sent to any third-party service.
 
 ## Install
 
-There are no tagged releases yet. Until the first one exists, build the UI in
-a checkout before installing it:
+### Prebuilt release
+
+Tagged archives already contain the UI and run with Node alone. Download the
+archive for the tag you want, verify its `*.sha256` file, then install it:
+
+```sh
+curl -LO https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.tar.gz
+curl -LO https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.sha256
+grep '  portless-home-vX.Y.Z.tar.gz$' portless-home-vX.Y.Z.sha256 | shasum -a 256 -c -
+tar -xzf portless-home-vX.Y.Z.tar.gz
+cd portless-home-vX.Y.Z
+./install.sh
+```
+
+### Build from source
+
+Use a checkout when working on the project or tracking HEAD:
 
 ```sh
 git clone https://github.com/xkeanu/portless-home
@@ -65,10 +80,10 @@ npm run build
 ```
 
 The install scripts check for the built files before they create a directory,
-replace a login service, or change Tailscale. A future tagged archive will
-already contain those files and needs Node only at runtime.
+replace a login service, or change Tailscale. Tagged archives already contain
+those files and need Node only at runtime.
 
-This copies the server to `~/.portless-home/`, registers a login service
+Either path copies the server to `~/.portless-home/`, registers a login service
 (launchd `sh.portless.home` on macOS, a systemd user service on Linux;
 starts at login, restarts on crash, no sudo), and adds a persistent
 `tailscale serve` rule pinning it to `:443`. If Tailscale isn't running
@@ -83,6 +98,20 @@ the server now but skips start-at-login (and crash restarts). Rerun
 `./install.sh` without the flag to switch back.
 
 ### Windows
+
+For a tagged archive:
+
+```powershell
+Invoke-WebRequest https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.zip -OutFile portless-home-vX.Y.Z.zip
+Invoke-WebRequest https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.sha256 -OutFile portless-home-vX.Y.Z.sha256
+$expected = ((Get-Content portless-home-vX.Y.Z.sha256 | Where-Object { $_ -match '\.zip$' }).Split())[0]
+if ((Get-FileHash portless-home-vX.Y.Z.zip -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Checksum mismatch' }
+Expand-Archive portless-home-vX.Y.Z.zip
+Set-Location portless-home-vX.Y.Z
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+To build from source instead:
 
 ```powershell
 git clone https://github.com/xkeanu/portless-home
@@ -104,7 +133,8 @@ before running the script picks the port; `-NoAutostart` is
 
 ### Homebrew
 
-There are no tagged releases yet, so the formula installs from HEAD:
+The formula deliberately installs from HEAD and builds the locked contributor
+dependencies. It does not use release archives:
 
 ```sh
 brew tap xkeanu/portless-home https://github.com/xkeanu/portless-home
@@ -352,11 +382,10 @@ npm test
 
 ## Releases
 
-Tagged releases will include `dist/ui-server.mjs`, `dist/ui.js`, and
+Tagged releases include `dist/ui-server.mjs`, `dist/ui.js`, and
 `dist/ui.css`. The server exposes the browser files at `/assets/ui.js` and
 `/assets/ui.css`, so running the package needs no npm install and no build.
-This repository has no release tag yet. The Homebrew formula therefore installs
-from HEAD and builds the locked contributor dependencies itself.
+The Homebrew formula remains a HEAD source build.
 
 Maintainers create candidate archives after a clean build:
 
@@ -372,3 +401,6 @@ installers, built UI, runtime source, and referenced docs, and excludes
 not provide archive writers. The manifest order, file timestamps, archive
 ownership, gzip timestamp, and stripped zip metadata keep repeated builds on
 the release runner reproducible.
+
+Signed and notarized macOS binaries and a Homebrew cask are tracked separately
+in #34. They are not part of these Node release archives.

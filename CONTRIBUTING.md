@@ -31,9 +31,9 @@ reason in the description.
 2. **Single-file server until it hurts.** `server.mjs` stays one file
    while it's small. If a change would push it past ~200 lines, split by
    concern (e.g. `render.mjs` for HTML) rather than growing it.
-3. **Logic lives in pure functions.** HTML comes from functions like
-   `card()` that take data and return strings. Don't inline duplicate
-   markup in the request handler — extract a function instead.
+3. **Keep rendering data-first.** Svelte components render the prepared page
+   model. Keep data preparation in pure functions and do not rebuild markup in
+   request handlers.
 4. **Stateless per request.** The server rereads `routes.json` on every
    request. No caches, no background timers. The one watcher (`live.mjs`,
    behind `/events`) exists only while a page is listening: it starts with
@@ -41,8 +41,9 @@ reason in the description.
    nothing. The opt-in local launcher tracks only the child processes it
    starts, to reject duplicate launches and report exits. Child events
    update this state; there is no process polling or idle timer.
-5. **Escape everything user-influenced.** Any value from `routes.json`
-   goes through `esc()` before landing in HTML.
+5. **Escape everything user-influenced.** Svelte escapes template values by
+   default. Do not add raw HTML rendering, and keep the server-to-client JSON
+   model safe for a script context.
 
 ## Testing
 

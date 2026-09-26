@@ -65,6 +65,13 @@ const run = (command, args, options) => {
 	if (result.status !== 0) fail(`${command} failed: ${result.stderr || result.stdout}`.trim());
 };
 
+export const tarOwnershipArgs = (version) =>
+	/\bGNU tar\b/i.test(version)
+		? ['--owner=0', '--group=0', '--numeric-owner']
+		: ['--uid', '0', '--gid', '0', '--uname', 'root', '--gname', 'root'];
+
+const localTarOwnershipArgs = () => tarOwnershipArgs(spawnSync('tar', ['--version'], { encoding: 'utf8' }).stdout || '');
+
 export const packageRelease = ({ tag, output = join(root, 'release'), source = root } = {}) => {
 	if (!isReleaseTag(tag)) fail(`Expected a SemVer release tag such as v1.2.3, got ${tag || '(empty)'}.`);
 	output = resolve(output);
@@ -91,8 +98,8 @@ export const packageRelease = ({ tag, output = join(root, 'release'), source = r
 		for (const file of [tarPath, tarball, zipball, checksumFile]) rmSync(file, { force: true });
 		// BSD tar and GNU tar both preserve the supplied order. Node writes the
 		// gzip header with a fixed timestamp, and zip -X strips host metadata.
-		// Explicit ownership keeps the tar stream independent of the builder's uid.
-		run('tar', ['--uid', '0', '--gid', '0', '--uname', 'root', '--gname', 'root', '-cf', tarPath, '-C', temp, ...archiveFiles.map((file) => `${name}/${file}`)]);
+		// GNU tar and BSD tar use different flags to normalize ownership.
+		run('tar', [...localTarOwnershipArgs(), '-cf', tarPath, '-C', temp, ...archiveFiles.map((file) => `${name}/${file}`)]);
 		writeFileSync(tarball, gzipSync(readFileSync(tarPath), { mtime: 0 }));
 		rmSync(tarPath);
 		run('zip', ['-X', '-q', zipball, ...archiveFiles.map((file) => `${name}/${file}`)], { cwd: temp });
