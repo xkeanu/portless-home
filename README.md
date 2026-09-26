@@ -44,7 +44,7 @@ Nothing is sent to any third-party service.
 ## Requirements
 
 - Node.js 20.6 or newer to run an installed package
-- Node.js 22.12 or newer to build from a checkout
+- Node.js 22.13 or newer to build from a checkout
 - macOS, Linux, or Windows
 - [portless](https://github.com/vercel-labs/portless) with Tailscale sharing
   (`--tailscale` or `PORTLESS_TAILSCALE=1`)

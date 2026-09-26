@@ -59,6 +59,11 @@ jobs:
           echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
           if echo "$page" | grep -q 'dead'; then echo "dead-pid app not filtered"; exit 1; fi
           node scripts/package.mjs v0.0.0-ci --output .release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.6.1
+      - name: packaged Node 20.6 runtime smoke test
+        run: |
           node scripts/release-smoke.mjs .release/portless-home-v0.0.0-ci.tar.gz
 
   windows:

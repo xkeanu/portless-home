@@ -20,15 +20,19 @@ jobs:
           cache: npm
       - name: validate tag, build, and test
         run: |
-          node -e 'import("./scripts/package.mjs").then(({ isReleaseTag }) => { if (!isReleaseTag(process.env.GITHUB_REF_NAME)) throw new Error(`Invalid SemVer tag: ${process.env.GITHUB_REF_NAME}`) })'
+          node -e 'import("./scripts/package.mjs").then(({ isReleaseTag }) => { if (!isReleaseTag(process.env.GITHUB_REF_NAME)) throw new Error("Invalid SemVer tag: " + process.env.GITHUB_REF_NAME) })'
           npm ci
           npm run build
           node --test
       - name: package and smoke-test the extracted archive
         run: |
           node scripts/package.mjs "$GITHUB_REF_NAME" --output release
-          node scripts/release-smoke.mjs "release/portless-home-$GITHUB_REF_NAME.tar.gz"
           (cd release && sha256sum -c "portless-home-$GITHUB_REF_NAME.sha256")
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.6.1
+      - name: smoke-test the packaged Node 20.6 runtime
+        run: node scripts/release-smoke.mjs "release/portless-home-$GITHUB_REF_NAME.tar.gz"
       - name: retain release artifacts for publication
         uses: actions/upload-artifact@v4
         with:
