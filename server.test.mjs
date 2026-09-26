@@ -1,8 +1,8 @@
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
-import { writeFileSync, readFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hasTailnetAddr, probe, orderRoutes, mergePinned } from './server.mjs';
@@ -10,6 +10,21 @@ import { page } from './render.mjs';
 import { JSDOM } from 'jsdom';
 
 const documentOf = (html) => new JSDOM(html).window.document;
+
+// Missing fixture files must never fall back to the developer's registry or peers.
+beforeEach((t) => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-config-'));
+	const keys = ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS', 'PORTLESS_APPS'];
+	const previous = new Map(keys.map((key) => [key, process.env[key]]));
+	for (const key of keys) process.env[key] = join(dir, key + '.json');
+	t.after(() => {
+		for (const [key, value] of previous) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+		rmSync(dir, { recursive: true, force: true });
+	});
+});
 
 const get = (port) =>
 	new Promise((resolve, reject) => {
