@@ -93,5 +93,5 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           prerelease=()
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease=(--prerelease); fi
+          if [[ "${GITHUB_REF_NAME%%+*}" == *-* ]]; then prerelease=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" release/* --repo "$GH_REPO" --verify-tag "${prerelease[@]}" --title "$GITHUB_REF_NAME" --generate-notes
