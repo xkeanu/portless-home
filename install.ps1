@@ -18,8 +18,23 @@ if (-not $Node) { Write-Host 'node not found on PATH.'; exit 1 }
 # --env-file (below) arrived in node 20.6.
 if ([version](& $Node --version).TrimStart('v') -lt [version]'20.6') { Write-Host 'node 20.6 or newer required.'; exit 1 }
 
+# A checkout needs its contributor build before it can be installed. Check every
+# input before creating the install directory or replacing an existing task.
+$RequiredFiles = @(
+	'server.mjs', 'render.mjs', 'i18n.mjs', 'peers.mjs', 'menubar.mjs', 'live.mjs', 'launch.mjs',
+	'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css'
+)
+foreach ($File in $RequiredFiles) {
+	if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $File) -PathType Leaf)) {
+		Write-Host "Missing $File. Run npm ci and npm run build before installing from a checkout."
+		exit 1
+	}
+}
+
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'dist') | Out-Null
 Copy-Item -Path "$PSScriptRoot\server.mjs", "$PSScriptRoot\render.mjs", "$PSScriptRoot\i18n.mjs", "$PSScriptRoot\peers.mjs", "$PSScriptRoot\menubar.mjs", "$PSScriptRoot\live.mjs", "$PSScriptRoot\launch.mjs" -Destination $InstallDir
+Copy-Item -Path "$PSScriptRoot\dist\ui-server.mjs", "$PSScriptRoot\dist\ui.js", "$PSScriptRoot\dist\ui.css" -Destination (Join-Path $InstallDir 'dist')
 
 # Task Scheduler cannot set environment variables per action, and under the S4U
 # logon type below %USERPROFILE% is not guaranteed to be the real profile, so the

@@ -7,7 +7,9 @@ class PortlessHome < Formula
   depends_on "node"
 
   def install
-    libexec.install "server.mjs", "render.mjs", "i18n.mjs", "peers.mjs", "menubar.mjs", "live.mjs", "launch.mjs"
+    system "npm", "ci", "--ignore-scripts"
+    system "npm", "run", "build"
+    libexec.install "server.mjs", "render.mjs", "i18n.mjs", "peers.mjs", "menubar.mjs", "live.mjs", "launch.mjs", "dist"
     pkgshare.install "menubar"
     (bin/"portless-home").write <<~SH
       #!/bin/sh
@@ -48,6 +50,7 @@ class PortlessHome < Formula
                 (bin/"portless-home").to_s)
     sleep 2
     assert_match "dev apps", shell_output("curl -sf http://127.0.0.1:#{port}/")
+    assert_predicate libexec/"dist/ui-server.mjs", :exist?
   ensure
     Process.kill("TERM", pid) if pid
   end

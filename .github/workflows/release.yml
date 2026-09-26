@@ -1,0 +1,89 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: validate tag, build, and test
+        run: |
+          node -e 'import("./scripts/package.mjs").then(({ isReleaseTag }) => { if (!isReleaseTag(process.env.GITHUB_REF_NAME)) throw new Error(`Invalid SemVer tag: ${process.env.GITHUB_REF_NAME}`) })'
+          npm ci
+          npm run build
+          node --test
+      - name: package and smoke-test the extracted archive
+        run: |
+          node scripts/package.mjs "$GITHUB_REF_NAME" --output release
+          node scripts/release-smoke.mjs "release/portless-home-$GITHUB_REF_NAME.tar.gz"
+          (cd release && sha256sum -c "portless-home-$GITHUB_REF_NAME.sha256")
+      - name: retain release artifacts for publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release/
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: build and run platform tests
+        run: |
+          npm ci
+          npm run build
+          node --test
+      - name: validate PowerShell installers without installing
+        shell: powershell
+        run: |
+          foreach ($f in 'install.ps1', 'uninstall.ps1', 'tray/portless-home-tray.ps1') {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors; exit 1 }
+          }
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: build the native companion
+        working-directory: macos
+        run: |
+          swift test
+          ./build.sh
+          test -x dist/PortlessHome.app/Contents/MacOS/PortlessHome
+
+  publish:
+    needs: [validate, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release
+      - name: publish GitHub release after every gate passes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --title "$GITHUB_REF_NAME" --generate-notes
