@@ -22,9 +22,9 @@ const get = (port) =>
 		req.end();
 	});
 
-const getPath = (port, path) =>
+const getPath = (port, path, method = 'GET') =>
 	new Promise((resolve, reject) => {
-		const req = request({ host: '127.0.0.1', port, method: 'GET', path }, (res) => {
+		const req = request({ host: '127.0.0.1', port, method, path }, (res) => {
 			const chunks = [];
 			res.on('data', (chunk) => chunks.push(chunk));
 			res.on('end', () =>
@@ -186,7 +186,7 @@ test('handler returns 200 with an empty page when the routes file is missing', a
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.match(body.data, /class="empty"/);
+		assert.ok(documentOf(body.data).querySelector('.empty'));
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -447,8 +447,8 @@ test('page renders a rename control and references the bundled Svelte client', a
 	const { port } = app.address();
 	try {
 		const body = await get(port);
-		assert.equal(documentOf(body.data).querySelector('.name[data-host="demo.localhost"]').textContent, 'demo');
 		const doc = documentOf(body.data);
+		assert.equal(doc.querySelector('.name[data-host="demo.localhost"]').textContent, 'demo');
 		assert.equal(doc.querySelector('script[type="module"]').getAttribute('src'), '/assets/ui.js');
 		assert.equal(doc.querySelector('link[rel="stylesheet"]').getAttribute('href'), '/assets/ui.css');
 		assert.equal(JSON.parse(doc.querySelector('#page-data').textContent).routes[0].hostname, 'demo.localhost');
@@ -836,11 +836,11 @@ test('hasTailnetAddr accepts a CGNAT IPv4 on the Windows "Tailscale" adapter', (
 
 test('page shows the Tailscale banner with a reconnect hint only when the tailnet is down', () => {
 	const down = page({ tailnetUp: false });
-	assert.match(down, /<p class="banner" role="status">Tailscale not running/);
-	assert.match(down, /<code>tailscale up<\/code>/);
+	assert.match(documentOf(down).querySelector('.banner[role="status"]').textContent, /Tailscale not running/);
+	assert.equal(documentOf(down).querySelector('.banner code').textContent, 'tailscale up');
 
 	const up = page();
-	assert.doesNotMatch(up, /class="banner"/);
+	assert.equal(documentOf(up).querySelector('.banner'), null);
 	assert.doesNotMatch(up, /Tailscale not running/);
 });
 
@@ -857,7 +857,7 @@ test('GET / reflects the machine tailnet state in the banner', async () => {
 		const body = await get(port);
 		assert.equal(body.status, 200);
 		// The wiring under test: banner present exactly when this machine has no tailnet address.
-		assert.equal(body.data.includes('class="banner"'), !hasTailnetAddr(networkInterfaces()));
+		assert.equal(Boolean(documentOf(body.data).querySelector('.banner')), !hasTailnetAddr(networkInterfaces()));
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -996,7 +996,7 @@ test('GET / with no peers configured renders no device headings', async () => {
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.doesNotMatch(body.data, /<h2>/);
+		assert.equal(documentOf(body.data).querySelector('h2'), null);
 		assert.match(body.data, /Nothing running\. Start an app through portless\./);
 	} finally {
 		close();
@@ -1083,17 +1083,17 @@ test('GET translates the heading, local-only label, and empty state from Accept-
 		const de = await getLang(port, 'de-CH,de;q=0.9,en;q=0.8');
 		assert.match(de, /<html lang="de">/);
 		assert.match(de, /<title>Dev-Apps<\/title>/);
-		assert.match(de, /<h1>Dev-Apps<\/h1>/);
+		assert.equal(documentOf(de).querySelector('h1').textContent, 'Dev-Apps');
 		assert.match(de, /nur lokal — notes\.localhost/);
 
 		const en = await getLang(port, undefined);
 		assert.match(en, /<html lang="en">/);
-		assert.match(en, /<h1>dev apps<\/h1>/);
+		assert.equal(documentOf(en).querySelector('h1').textContent, 'dev apps');
 		assert.match(en, /local only — notes\.localhost/);
 
 		writeFileSync(routesPath, '[]');
 		const empty = await getLang(port, 'fr');
-		assert.match(empty, /<p class="empty">Rien ne tourne\. Lance une app via portless\.<\/p>/);
+		assert.equal(documentOf(empty).querySelector('.empty').textContent, 'Rien ne tourne. Lance une app via portless.');
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -1179,6 +1179,10 @@ test('UI assets have correct MIME types and only public bundles are served', asy
 			assert.equal(result.headers['cache-control'], 'no-cache');
 			assert.equal(result.headers['x-content-type-options'], 'nosniff');
 			assert.equal(result.data, readFileSync(new URL(`./dist/${name}`, import.meta.url)).toString('latin1'));
+			const head = await getPath(port, `/assets/${name}`, 'HEAD');
+			assert.equal(head.status, 200);
+			assert.equal(head.data, '');
+			assert.equal(head.headers['content-length'], result.headers['content-length']);
 			assert.equal((await post(port, `/assets/${name}`, {})).status, 405);
 		}
 		for (const path of ['/assets/ui-server.mjs', '/assets/../server.mjs', '/assets/%2e%2e/server.mjs', '/assets/missing.js']) {
