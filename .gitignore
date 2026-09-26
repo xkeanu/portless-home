@@ -1,2 +1,4 @@
 macos/.build/
 macos/dist/
+node_modules/
+dist/
