@@ -1,6 +1,6 @@
 # portless-home
 
-Read CONTRIBUTING.md before changing code — it defines the design principles (zero dependencies, single-file server, pure functions, escape everything user-influenced).
+Read CONTRIBUTING.md before changing code — it defines the design principles (prebuilt Node-only releases, contributor UI builds, pure rendering, and safe handling of user-influenced data).
 
 ## Branch names (enforced by GitHub at push, no bypass)
 
