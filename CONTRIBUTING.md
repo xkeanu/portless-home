@@ -36,7 +36,9 @@ reason in the description.
    request. No caches, no background timers. The one watcher (`live.mjs`,
    behind `/events`) exists only while a page is listening: it starts with
    the first stream and closes with the last, so an idle server holds
-   nothing.
+   nothing. The opt-in local launcher tracks only the child processes it
+   starts, to reject duplicate launches and report exits. Child events
+   update this state; there is no process polling or idle timer.
 5. **Escape everything user-influenced.** Any value from `routes.json`
    goes through `esc()` before landing in HTML.
 

@@ -19,7 +19,7 @@ if (-not $Node) { Write-Host 'node not found on PATH.'; exit 1 }
 if ([version](& $Node --version).TrimStart('v') -lt [version]'20.6') { Write-Host 'node 20.6 or newer required.'; exit 1 }
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-Copy-Item -Path "$PSScriptRoot\server.mjs", "$PSScriptRoot\render.mjs", "$PSScriptRoot\i18n.mjs", "$PSScriptRoot\peers.mjs", "$PSScriptRoot\menubar.mjs", "$PSScriptRoot\live.mjs" -Destination $InstallDir
+Copy-Item -Path "$PSScriptRoot\server.mjs", "$PSScriptRoot\render.mjs", "$PSScriptRoot\i18n.mjs", "$PSScriptRoot\peers.mjs", "$PSScriptRoot\menubar.mjs", "$PSScriptRoot\live.mjs", "$PSScriptRoot\launch.mjs" -Destination $InstallDir
 
 # Task Scheduler cannot set environment variables per action, and under the S4U
 # logon type below %USERPROFILE% is not guaranteed to be the real profile, so the
@@ -31,7 +31,8 @@ $EnvFile = Join-Path $InstallDir 'service.env'
 	"PORTLESS_ROUTES=$env:USERPROFILE\.portless\routes.json",
 	"PORTLESS_NAMES=$InstallDir\names.json",
 	"PORTLESS_LAYOUT=$InstallDir\layout.json",
-	"PORTLESS_PEERS=$InstallDir\peers.json"
+	"PORTLESS_PEERS=$InstallDir\peers.json",
+	"PORTLESS_APPS=$InstallDir\apps.json"
 ) -join "`n") + "`n")
 
 # node runs as the task's own process (no cmd/powershell wrapper): Stop-ScheduledTask

@@ -40,6 +40,13 @@ export const card = (r, up, names, pinned = false, interactive = true, t = EN) =
 const BANNER =
 	'<p class="banner" role="status">Tailscale not running — tailnet links won&#39;t work. Reconnect: <code>tailscale up</code> or open the Tailscale app.</p>';
 
+export const launchCard = (hostname, names, state, t = EN) => {
+	const starting = state === 'starting';
+	return `<li class="registered"><span class="row"><span class="name">${esc(displayName(hostname, names))}</span>` +
+		`<button type="button" class="start" data-start="${esc(hostname)}"${starting ? ' disabled' : ''}>${starting ? t.starting : t.start}</button></span>` +
+		`<span class="launch-status" role="status">${state === 'failed' ? t.startFailed : starting ? t.starting : t.stopped}</span></li>`;
+};
+
 const list = (rows, empty) => (rows ? `<ul>${rows}</ul>` : `<p class="empty">${empty}</p>`);
 const section = (device, rows, empty) => `<section><h2>${esc(device)}</h2>${list(rows, empty)}</section>`;
 const peerSection = (t) => ({ device, apps }) =>
@@ -94,12 +101,38 @@ export const page = (body, tailnetUp, t = EN, stamp = '') => `<!DOCTYPE html>
   .banner{background:#2a2014;border:1px solid #574018;border-radius:10px;color:#e8b761;
     font-size:13px;padding:12px 16px;margin:16px 0}
   .banner code{font-family:ui-monospace,monospace;color:#f0cf8e}
+  li.registered{padding:14px 16px;margin-bottom:8px;background:#1a1a20;border:1px solid #2a2a32;border-radius:10px}
+  .registered .name{color:#a4a4ae;overflow-wrap:anywhere;min-width:0}
+  .start{margin-left:auto;min-height:44px;padding:8px 14px;flex:none;font:inherit;color:#e6e6ea;background:#2a2a32;border:1px solid #6e6e7a;border-radius:6px;cursor:pointer}
+  .start:hover{background:#383842}
+  .start:active{background:#454550}
+  .start:focus-visible{outline:2px solid #e8b761;outline-offset:3px}
+  .start:disabled{color:#a4a4ae;cursor:wait}
+  .launch-status{display:block;margin-top:4px;color:#a4a4ae;font-size:13px;overflow-wrap:anywhere}
 </style></head>
 <body><main><h1>${t.title}</h1>
 ${tailnetUp ? '' : BANNER}
 ${body}
 </main>
 <script>
+document.querySelectorAll('[data-start]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    const status = button.closest('li').querySelector('[role="status"]');
+    status.textContent = ${JSON.stringify(t.starting)};
+    try {
+      const response = await fetch('/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostname: button.dataset.start }),
+      });
+      if (response.ok || response.status === 409) { location.reload(); return; }
+    } catch {}
+    status.textContent = ${JSON.stringify(t.startFailed)};
+    button.disabled = false;
+  });
+});
+if (document.querySelector('[data-start]:disabled')) setTimeout(() => location.reload(), 2000);
 document.querySelectorAll('.name[data-host]').forEach((el) => {
   const rename = (e) => {
     e.preventDefault();

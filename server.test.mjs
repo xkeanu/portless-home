@@ -612,6 +612,7 @@ test('page script chains layout saves: a second save waits for the first request
 	const alerts = [];
 	const fakeDocument = {
 		querySelectorAll: (sel) => (sel === '.pin' ? [fakePin] : []),
+		querySelector: () => null,
 		addEventListener: () => {},
 	};
 	new Function('document', 'fetch', 'alert', 'location', script)(

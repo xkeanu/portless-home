@@ -6,16 +6,19 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { card, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
+import { card, launchCard, directory, page, MANIFEST, ICON_SVG, ICON_PNG, ICON_PNG_512 } from './render.mjs';
 import { readPeers, fetchPeer, snapshot } from './peers.mjs';
 import { menubar } from './menubar.mjs';
 import { strings } from './i18n.mjs';
 import { events, readText, stamp } from './live.mjs';
+import { launcher, localRequest, readRegistry } from './launch.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
 const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 'layout.json');
 const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.portless-home', 'peers.json');
+const APPS = process.env.PORTLESS_APPS || join(homedir(), '.portless-home', 'apps.json');
+const launches = launcher();
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
 
@@ -169,6 +172,18 @@ const layout = async (req, res) => {
 	res.writeHead(204).end();
 };
 
+const start = async (req, res) => {
+	if (!localRequest(req) || req.headers.origin !== new URL(`http://${req.headers.host}`).origin ||
+		(req.headers['sec-fetch-site'] && req.headers['sec-fetch-site'] !== 'same-origin')) return fail(res, 403);
+	if (req.headers['content-type']?.split(';')[0].trim() !== 'application/json') return fail(res, 415);
+	const payload = await readJson(req);
+	if (!payload || typeof payload.hostname !== 'string' || Object.keys(payload).length !== 1) return fail(res, 400);
+	const app = readRegistry(APPS).find((app) => app.hostname === payload.hostname);
+	if (!app) return fail(res, 404);
+	if (readRoutes().some((r) => r.hostname === app.hostname)) return fail(res, 409);
+	return fail(res, await launches.start(app));
+};
+
 // This device's running apps, pinned first, each probed for health.
 const localApps = async (text = readText(ROUTES)) => {
 	const { pinned } = readLayout();
@@ -191,6 +206,7 @@ const menu = async (res) => {
 };
 
 export const handler = async (req, res) => {
+	if (req.url === '/start') return req.method === 'POST' ? start(req, res) : fail(res, 405);
 	if (req.method === 'POST' && req.url === '/rename') return rename(req, res);
 	if (req.method === 'POST' && req.url === '/layout') return layout(req, res);
 	if (req.url === '/api/routes') return req.method === 'GET' ? api(res) : fail(res, 405);
@@ -207,7 +223,9 @@ export const handler = async (req, res) => {
 	const [{ routes, up, names, pinned }, ...peers] = await Promise.all([localApps(text), ...readPeers(PEERS).map((p) => fetchPeer(p))]);
 	// UI strings follow the browser's language (see i18n.mjs).
 	const t = strings(req.headers['accept-language']);
-	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname), true, t)).join('');
+	const stopped = localRequest(req) ? readRegistry(APPS).filter((a) => !routes.some((r) => r.hostname === a.hostname)) : [];
+	const rows = routes.map((r, i) => card(r, up[i], names, pinned.has(r.hostname), true, t)).join('') +
+		stopped.map((a) => launchCard(a.hostname, names, launches.state(a.hostname), t)).join('');
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language' });
 	res.end(page(directory(hostname(), rows, peers, t), hasTailnetAddr(networkInterfaces()), t, stamp(text)));
 };
