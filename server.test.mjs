@@ -1,12 +1,30 @@
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
-import { writeFileSync, readFileSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hasTailnetAddr, probe, orderRoutes, mergePinned } from './server.mjs';
 import { page } from './render.mjs';
+import { JSDOM } from 'jsdom';
+
+const documentOf = (html) => new JSDOM(html).window.document;
+
+// Missing fixture files must never fall back to the developer's registry or peers.
+beforeEach((t) => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-config-'));
+	const keys = ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS', 'PORTLESS_APPS'];
+	const previous = new Map(keys.map((key) => [key, process.env[key]]));
+	for (const key of keys) process.env[key] = join(dir, key + '.json');
+	t.after(() => {
+		for (const [key, value] of previous) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+		rmSync(dir, { recursive: true, force: true });
+	});
+});
 
 const get = (port) =>
 	new Promise((resolve, reject) => {
@@ -19,9 +37,9 @@ const get = (port) =>
 		req.end();
 	});
 
-const getPath = (port, path) =>
+const getPath = (port, path, method = 'GET') =>
 	new Promise((resolve, reject) => {
-		const req = request({ host: '127.0.0.1', port, method: 'GET', path }, (res) => {
+		const req = request({ host: '127.0.0.1', port, method, path }, (res) => {
 			const chunks = [];
 			res.on('data', (chunk) => chunks.push(chunk));
 			res.on('end', () =>
@@ -156,8 +174,11 @@ test('handler renders a green dot for a live port and a plain dot for a dead one
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.match(body.data, /<span class="dot up" role="img" aria-label="online"><\/span><span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
-		assert.match(body.data, /<span class="dot" role="img" aria-label="offline"><\/span><span class="name" data-host="blog\.localhost" role="button" tabindex="0">blog<\/span>/);
+		const doc = documentOf(body.data);
+		assert.equal(doc.querySelector('li[data-host="demo.localhost"] .dot').getAttribute('aria-label'), 'online');
+		assert.equal(doc.querySelector('li[data-host="demo.localhost"] .name').textContent, 'demo');
+		assert.equal(doc.querySelector('li[data-host="blog.localhost"] .dot').getAttribute('aria-label'), 'offline');
+		assert.equal(doc.querySelector('li[data-host="blog.localhost"] .name').textContent, 'blog');
 	} finally {
 		app.close();
 		live.close();
@@ -180,7 +201,7 @@ test('handler returns 200 with an empty page when the routes file is missing', a
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.match(body.data, /class="empty"/);
+		assert.ok(documentOf(body.data).querySelector('.empty'));
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -237,7 +258,7 @@ test('GET renders the override label from names.json instead of the hostname', a
 	const { port } = app.address();
 	try {
 		const body = await get(port);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">My Demo<\/span>/);
+		assert.equal(documentOf(body.data).querySelector('.name[data-host="demo.localhost"]').textContent, 'My Demo');
 	} finally {
 		app.close();
 		live.close();
@@ -265,7 +286,7 @@ test('GET still renders when names.json is missing', async () => {
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+		assert.equal(documentOf(body.data).querySelector('.name[data-host="demo.localhost"]').textContent, 'demo');
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -295,7 +316,7 @@ test('GET still renders when names.json is corrupt', async () => {
 		try {
 			const body = await get(port);
 			assert.equal(body.status, 200);
-			assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+		assert.equal(documentOf(body.data).querySelector('.name[data-host="demo.localhost"]').textContent, 'demo');
 		} finally {
 			app.close();
 			delete process.env.PORTLESS_ROUTES;
@@ -324,7 +345,7 @@ test('POST /rename writes the file; a following GET shows the new label', async 
 		const res = await post(port, '/rename', { hostname: 'demo.localhost', label: 'New Label' });
 		assert.equal(res.status, 204);
 		const body = await get(port);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">New Label<\/span>/);
+		assert.equal(documentOf(body.data).querySelector('.name[data-host="demo.localhost"]').textContent, 'New Label');
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -353,7 +374,7 @@ test('POST with empty label clears an existing override', async () => {
 		const res = await post(port, '/rename', { hostname: 'demo.localhost', label: '   ' });
 		assert.equal(res.status, 204);
 		const body = await get(port);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
+		assert.equal(documentOf(body.data).querySelector('.name[data-host="demo.localhost"]').textContent, 'demo');
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -416,7 +437,7 @@ test('a label with markup renders escaped in the page', async () => {
 	try {
 		const body = await get(port);
 		assert.doesNotMatch(body.data, /<script>alert/);
-		assert.match(body.data, /&#60;script&#62;alert\(1\)&#60;\/script&#62;&#34;/);
+		assert.equal(documentOf(body.data).querySelector('.name').textContent, '<script>alert(1)</script>"');
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -424,7 +445,7 @@ test('a label with markup renders escaped in the page', async () => {
 	}
 });
 
-test('page contains the rename wiring: data-host attribute and a POST to /rename in the inline script', async () => {
+test('page renders a rename control and references the bundled Svelte client', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
@@ -441,12 +462,11 @@ test('page contains the rename wiring: data-host attribute and a POST to /rename
 	const { port } = app.address();
 	try {
 		const body = await get(port);
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
-		assert.match(body.data, /<script>[\s\S]*\/rename[\s\S]*<\/script>/);
-		assert.match(body.data, /fetch\(['"]\/rename['"]/);
-		assert.match(body.data, /keydown/);
-		assert.match(body.data, /r\.ok/);
-		assert.match(body.data, /\.catch\(/);
+		const doc = documentOf(body.data);
+		assert.equal(doc.querySelector('.name[data-host="demo.localhost"]').textContent, 'demo');
+		assert.equal(doc.querySelector('script[type="module"]').getAttribute('src'), '/assets/ui.js');
+		assert.equal(doc.querySelector('link[rel="stylesheet"]').getAttribute('href'), '/assets/ui.css');
+		assert.equal(JSON.parse(doc.querySelector('#page-data').textContent).routes[0].hostname, 'demo.localhost');
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -591,48 +611,6 @@ test('POST /layout: a later save replaces the order of an earlier one', async ()
 	}
 });
 
-test('page script chains layout saves: a second save waits for the first request to settle', async () => {
-	const script = page('', true).match(/<script>([\s\S]*)<\/script>/)[1];
-	const clicks = [];
-	const fakePin = {
-		dataset: { host: 'demo.localhost' },
-		addEventListener: (type, fn) => {
-			if (type === 'click') clicks.push(fn);
-		},
-	};
-	const fetchCalls = [];
-	let settleFirst;
-	const fakeFetch = (url, opts) => {
-		fetchCalls.push(JSON.parse(opts.body));
-		return new Promise((resolve) => {
-			if (fetchCalls.length === 1) settleFirst = () => resolve({ ok: true });
-			else resolve({ ok: true });
-		});
-	};
-	const alerts = [];
-	const fakeDocument = {
-		querySelectorAll: (sel) => (sel === '.pin' ? [fakePin] : []),
-		querySelector: () => null,
-		addEventListener: () => {},
-	};
-	new Function('document', 'fetch', 'alert', 'location', script)(
-		fakeDocument,
-		fakeFetch,
-		(msg) => alerts.push(msg),
-		{ reload: () => {} }
-	);
-	const evt = { preventDefault: () => {}, stopPropagation: () => {} };
-	clicks[0](evt);
-	clicks[0](evt);
-	await new Promise((resolve) => setImmediate(resolve));
-	assert.equal(fetchCalls.length, 1, 'second save must not start while the first is in flight');
-	settleFirst();
-	await new Promise((resolve) => setImmediate(resolve));
-	assert.equal(fetchCalls.length, 2, 'second save runs once the first settles');
-	assert.deepEqual(fetchCalls[1], { pinned: ['demo.localhost'] });
-	assert.deepEqual(alerts, []);
-});
-
 test('POST /layout rejects malformed JSON, non-array pins, non-string entries, and oversized lists', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
 	const routesPath = join(dir, 'routes.json');
@@ -666,7 +644,7 @@ test('POST /layout rejects malformed JSON, non-array pins, non-string entries, a
 	}
 });
 
-test('page contains the pin wiring: pin toggles, reorder handles on pinned cards, and a POST to /layout', async () => {
+test('page renders pin controls and reorder handles only on pinned cards', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
@@ -689,31 +667,15 @@ test('page contains the pin wiring: pin toggles, reorder handles on pinned cards
 	const { port } = app.address();
 	try {
 		const body = await get(port);
-		assert.match(
-			body.data,
-			/<span class="pin pinned" data-host="beta\.localhost" role="button" tabindex="0" aria-pressed="true"/
-		);
-		assert.match(
-			body.data,
-			/<span class="pin" data-host="alpha\.localhost" role="button" tabindex="0" aria-pressed="false"/
-		);
-		assert.match(body.data, /<li class="pinned" data-host="beta\.localhost">/);
-		// The pinned card carries a reorder handle; unpinned cards do not.
-		// data-host="…"> only ends the <li> tag; on the inner spans more attributes follow.
-		const [alphaCard, betaCard] = ['alpha', 'beta'].map((n) => {
-			const from = body.data.indexOf(`data-host="${n}.localhost">`);
-			return body.data.slice(from, body.data.indexOf('</li>', from));
-		});
-		assert.match(betaCard, /<span class="handle" role="button" tabindex="0" aria-label="[^"]*"/);
-		assert.doesNotMatch(alphaCard, /class="handle"/);
-		assert.match(body.data, /fetch\(['"]\/layout['"]/);
-		// Reorder works with pointer events (mouse + touch) and arrow keys — not HTML5 DnD, which is inert on phones.
-		assert.match(body.data, /pointerdown/);
-		assert.match(body.data, /pointermove/);
-		assert.match(body.data, /ArrowUp/);
-		assert.doesNotMatch(body.data, /draggable="true"/);
-		// Saves are chained so rapid reorders cannot land out of order on the read-merge-write endpoint.
-		assert.match(body.data, /saving = saving\.then/);
+		const doc = documentOf(body.data);
+		const beta = doc.querySelector('li[data-host="beta.localhost"]');
+		const alpha = doc.querySelector('li[data-host="alpha.localhost"]');
+		assert.equal(beta.querySelector('.pin').getAttribute('aria-pressed'), 'true');
+		assert.equal(alpha.querySelector('.pin').getAttribute('aria-pressed'), 'false');
+		assert.ok(beta.classList.contains('pinned'));
+		assert.ok(beta.querySelector('.handle'));
+		assert.equal(alpha.querySelector('.handle'), null);
+		assert.equal(doc.querySelector('[draggable="true"]'), null);
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -888,12 +850,12 @@ test('hasTailnetAddr accepts a CGNAT IPv4 on the Windows "Tailscale" adapter', (
 });
 
 test('page shows the Tailscale banner with a reconnect hint only when the tailnet is down', () => {
-	const down = page('', false);
-	assert.match(down, /<p class="banner" role="status">Tailscale not running/);
-	assert.match(down, /<code>tailscale up<\/code>/);
+	const down = page({ tailnetUp: false });
+	assert.match(documentOf(down).querySelector('.banner[role="status"]').textContent, /Tailscale not running/);
+	assert.equal(documentOf(down).querySelector('.banner code').textContent, 'tailscale up');
 
-	const up = page('', true);
-	assert.doesNotMatch(up, /class="banner"/);
+	const up = page();
+	assert.equal(documentOf(up).querySelector('.banner'), null);
 	assert.doesNotMatch(up, /Tailscale not running/);
 });
 
@@ -910,7 +872,7 @@ test('GET / reflects the machine tailnet state in the banner', async () => {
 		const body = await get(port);
 		assert.equal(body.status, 200);
 		// The wiring under test: banner present exactly when this machine has no tailnet address.
-		assert.equal(body.data.includes('class="banner"'), !hasTailnetAddr(networkInterfaces()));
+		assert.equal(Boolean(documentOf(body.data).querySelector('.banner')), !hasTailnetAddr(networkInterfaces()));
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -1010,17 +972,17 @@ test('GET / merges configured peers under per-device headings; unreachable peers
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		const headings = [...body.data.matchAll(/<h2>([^<]*)<\/h2>/g)].map((m) => m[1]);
-		assert.equal(headings.length, 2, `expected local + one reachable peer, got ${JSON.stringify(headings)}`);
-		assert.equal(headings[1], 'laptop &#60;b&#62;');
-		// local card keeps its controls
-		assert.match(body.data, /<span class="name" data-host="demo\.localhost" role="button" tabindex="0">demo<\/span>/);
-		// peer cards: escaped label, working link, no rename/pin controls
-		assert.match(body.data, /<a href="https:\/\/laptop\.example\.ts\.net:8443"><span class="row"><span class="dot up" role="img" aria-label="online"><\/span><span class="name">Web &#60;i&#62;<\/span><\/span>/);
-		assert.match(body.data, /<li class="local"><span class="row"><span class="dot" role="img" aria-label="offline"><\/span><span class="name">notes<\/span><\/span><span class="url">local only — notes\.localhost<\/span><\/li>/);
-		assert.equal((body.data.match(/class="pin/g) || []).length, 1);
-		// local section comes first and holds the local card
-		assert.ok(body.data.indexOf('demo.localhost') < body.data.indexOf('laptop &#60;b&#62;'));
+		const doc = documentOf(body.data);
+		const sections = [...doc.querySelectorAll('section')];
+		assert.equal(sections.length, 2);
+		assert.equal(sections[1].querySelector('h2').textContent, 'laptop <b>');
+		assert.equal(sections[0].querySelector('.name[data-host="demo.localhost"]').textContent, 'demo');
+		assert.equal(sections[1].querySelector('a').getAttribute('href'), 'https://laptop.example.ts.net:8443');
+		assert.equal(sections[1].querySelector('.name').textContent, 'Web <i>');
+		assert.equal(sections[1].querySelector('.local .name').textContent, 'notes');
+		assert.match(sections[1].querySelector('.local .url').textContent, /local only — notes.localhost/);
+		assert.equal(sections[1].querySelector('[data-host], .pin, .handle'), null);
+		assert.equal(doc.querySelectorAll('.pin').length, 1);
 	} finally {
 		close();
 		live.close();
@@ -1034,7 +996,9 @@ test('GET / with a reachable peer that has nothing running shows its heading wit
 	const { port, close } = await bootFixture(dir, { 'peers.json': { peers: [peer.base] } });
 	try {
 		const body = await get(port);
-		assert.match(body.data, /<h2>laptop<\/h2><p class="empty">Nothing running\.<\/p>/);
+		const peerSection = documentOf(body.data).querySelectorAll('section')[1];
+		assert.equal(peerSection.querySelector('h2').textContent, 'laptop');
+		assert.equal(peerSection.querySelector('.empty').textContent, 'Nothing running.');
 	} finally {
 		close();
 		peer.srv.close();
@@ -1047,16 +1011,11 @@ test('GET / with no peers configured renders no device headings', async () => {
 	try {
 		const body = await get(port);
 		assert.equal(body.status, 200);
-		assert.doesNotMatch(body.data, /<h2>/);
+		assert.equal(documentOf(body.data).querySelector('h2'), null);
 		assert.match(body.data, /Nothing running\. Start an app through portless\./);
 	} finally {
 		close();
 	}
-});
-
-test('page script only wires rename onto names that carry a data-host', () => {
-	const script = page('', true).match(/<script>([\s\S]*)<\/script>/)[1];
-	assert.match(script, /querySelectorAll\('\.name\[data-host\]'\)/);
 });
 
 test('probe resolves true when the server responds with a non-2xx status', async () => {
@@ -1139,17 +1098,17 @@ test('GET translates the heading, local-only label, and empty state from Accept-
 		const de = await getLang(port, 'de-CH,de;q=0.9,en;q=0.8');
 		assert.match(de, /<html lang="de">/);
 		assert.match(de, /<title>Dev-Apps<\/title>/);
-		assert.match(de, /<h1>Dev-Apps<\/h1>/);
+		assert.equal(documentOf(de).querySelector('h1').textContent, 'Dev-Apps');
 		assert.match(de, /nur lokal — notes\.localhost/);
 
 		const en = await getLang(port, undefined);
 		assert.match(en, /<html lang="en">/);
-		assert.match(en, /<h1>dev apps<\/h1>/);
+		assert.equal(documentOf(en).querySelector('h1').textContent, 'dev apps');
 		assert.match(en, /local only — notes\.localhost/);
 
 		writeFileSync(routesPath, '[]');
 		const empty = await getLang(port, 'fr');
-		assert.match(empty, /<p class="empty">Rien ne tourne\. Lance une app via portless\.<\/p>/);
+		assert.equal(documentOf(empty).querySelector('.empty').textContent, 'Rien ne tourne. Lance une app via portless.');
 	} finally {
 		app.close();
 		delete process.env.PORTLESS_ROUTES;
@@ -1187,7 +1146,7 @@ test('GET /events opens a server-sent-events stream; other methods get 405', asy
 		assert.equal(stream.res.headers['content-type'], 'text/event-stream');
 		// The page embeds the stamp of the routes.json it rendered; the stream opens with the current one.
 		const html = await get(port);
-		const [, embedded] = html.data.match(/e\.data !== "([0-9a-f]{12})"/);
+		const { stamp: embedded } = JSON.parse(documentOf(html.data).querySelector('#page-data').textContent);
 		assert.equal(stream.text, `data: ${embedded}\n\n`);
 	} finally {
 		stream?.req.destroy();
@@ -1196,14 +1155,55 @@ test('GET /events opens a server-sent-events stream; other methods get 405', asy
 	}
 });
 
-test('page listens on /events instead of a meta refresh, keeping the refresh for scripts-off and as a fallback', () => {
-	const html = page('', true, undefined, 'abc123def456');
+test('page preserves scripts-off refresh and passes the snapshot stamp to hydration', () => {
+	const html = page({ stamp: 'abc123def456' });
 	assert.match(html, /<noscript><meta http-equiv="refresh" content="15"><\/noscript>/);
 	assert.equal(html.match(/http-equiv="refresh"/g).length, 1);
-	const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
-	assert.match(script, /new EventSource\('\/events'\)/);
-	assert.match(script, /if \(e\.data !== "abc123def456"\) location\.reload\(\)/);
-	assert.match(script, /onerror/);
-	assert.match(script, /setTimeout\(\(\) => location\.reload\(\), 15000\)/);
-	assert.match(script, /visibilitychange/);
+	const doc = documentOf(html);
+	assert.equal(JSON.parse(doc.querySelector('#page-data').textContent).stamp, 'abc123def456');
+	assert.equal(doc.querySelector('script[type="module"]').getAttribute('src'), '/assets/ui.js');
+});
+
+test('hydration data round-trips hostile labels without creating executable markup', () => {
+	const hostile = '</script><script>globalThis.compromised=true</script><img src=x onerror=bad>&"';
+	const html = page({
+		device: hostile,
+		routes: [{ hostname: 'demo.localhost', label: hostile, up: true, pinned: true, tailscaleUrl: 'https://example.test/?q="<x>' }],
+		registered: [{ hostname: 'stopped.localhost', label: hostile, state: 'stopped' }],
+		peers: [{ device: hostile, apps: [{ hostname: 'peer.localhost', label: hostile, up: false }] }],
+	});
+	const doc = documentOf(html);
+	assert.equal(doc.querySelectorAll('script').length, 2);
+	assert.equal(doc.querySelector('script:not([id]):not([src])'), null);
+	assert.equal(doc.querySelector('img'), null);
+	assert.equal(doc.querySelector('.name').textContent, hostile);
+	const model = JSON.parse(doc.querySelector('#page-data').textContent);
+	assert.equal(model.routes[0].label, hostile);
+	assert.equal(model.registered[0].label, hostile);
+	assert.equal(model.peers[0].device, hostile);
+});
+
+test('UI assets have correct MIME types and only public bundles are served', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-assets-'));
+	const { port, close } = await bootFixture(dir, {});
+	try {
+		for (const [name, type] of [['ui.js', 'text/javascript'], ['ui.css', 'text/css']]) {
+			const result = await getPath(port, `/assets/${name}`);
+			assert.equal(result.status, 200);
+			assert.ok(result.headers['content-type'].startsWith(type));
+			assert.equal(result.headers['cache-control'], 'no-cache');
+			assert.equal(result.headers['x-content-type-options'], 'nosniff');
+			assert.equal(result.data, readFileSync(new URL(`./dist/${name}`, import.meta.url)).toString('latin1'));
+			const head = await getPath(port, `/assets/${name}`, 'HEAD');
+			assert.equal(head.status, 200);
+			assert.equal(head.data, '');
+			assert.equal(head.headers['content-length'], result.headers['content-length']);
+			assert.equal((await post(port, `/assets/${name}`, {})).status, 405);
+		}
+		for (const path of ['/assets/ui-server.mjs', '/assets/../server.mjs', '/assets/%2e%2e/server.mjs', '/assets/missing.js']) {
+			assert.equal((await getPath(port, path)).status, 404);
+		}
+	} finally {
+		close();
+	}
 });

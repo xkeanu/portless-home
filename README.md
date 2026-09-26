@@ -43,7 +43,8 @@ Nothing is sent to any third-party service.
 
 ## Requirements
 
-- Node.js (20.6 or newer on Windows)
+- Node.js 20.6 or newer to run an installed package
+- Node.js 22.13 or newer to build from a checkout
 - macOS, Linux, or Windows
 - [portless](https://github.com/vercel-labs/portless) with Tailscale sharing
   (`--tailscale` or `PORTLESS_TAILSCALE=1`)
@@ -52,13 +53,37 @@ Nothing is sent to any third-party service.
 
 ## Install
 
+### Prebuilt release
+
+Tagged archives already contain the UI and run with Node alone. Download the
+archive for the tag you want, verify its `*.sha256` file, then install it:
+
 ```sh
-git clone https://github.com/xkeanu/portless-home
-cd portless-home
+curl -LO https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.tar.gz
+curl -LO https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.sha256
+grep '  portless-home-vX.Y.Z.tar.gz$' portless-home-vX.Y.Z.sha256 | shasum -a 256 -c -
+tar -xzf portless-home-vX.Y.Z.tar.gz
+cd portless-home-vX.Y.Z
 ./install.sh
 ```
 
-This copies the server to `~/.portless-home/`, registers a login service
+### Build from source
+
+Use a checkout when working on the project or tracking HEAD:
+
+```sh
+git clone https://github.com/xkeanu/portless-home
+cd portless-home
+npm ci
+npm run build
+./install.sh
+```
+
+The install scripts check for the built files before they create a directory,
+replace a login service, or change Tailscale. Tagged archives already contain
+those files and need Node only at runtime.
+
+Either path copies the server to `~/.portless-home/`, registers a login service
 (launchd `sh.portless.home` on macOS, a systemd user service on Linux;
 starts at login, restarts on crash, no sudo), and adds a persistent
 `tailscale serve` rule pinning it to `:443`. If Tailscale isn't running
@@ -74,9 +99,25 @@ the server now but skips start-at-login (and crash restarts). Rerun
 
 ### Windows
 
+For a tagged archive:
+
+```powershell
+Invoke-WebRequest https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.zip -OutFile portless-home-vX.Y.Z.zip
+Invoke-WebRequest https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.sha256 -OutFile portless-home-vX.Y.Z.sha256
+$expected = ((Get-Content portless-home-vX.Y.Z.sha256 | Where-Object { $_ -match '\.zip$' }).Split())[0]
+if ((Get-FileHash portless-home-vX.Y.Z.zip -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Checksum mismatch' }
+Expand-Archive portless-home-vX.Y.Z.zip
+Set-Location portless-home-vX.Y.Z
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+To build from source instead:
+
 ```powershell
 git clone https://github.com/xkeanu/portless-home
 cd portless-home
+npm ci
+npm run build
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
@@ -92,7 +133,8 @@ before running the script picks the port; `-NoAutostart` is
 
 ### Homebrew
 
-There are no tagged releases yet, so the formula installs from HEAD:
+The formula deliberately installs from HEAD and builds the locked contributor
+dependencies. It does not use release archives:
 
 ```sh
 brew tap xkeanu/portless-home https://github.com/xkeanu/portless-home
@@ -310,10 +352,12 @@ certs.
 
 ## Running it locally
 
-Run the server straight from a checkout, no install needed. It reads
+Run the server straight from a built checkout, no install needed. It reads
 `~/.portless/routes.json` by default and serves `http://127.0.0.1:5995`:
 
 ```sh
+npm ci
+npm run build
 node server.mjs
 ```
 
@@ -333,5 +377,30 @@ range; override with `PORT`.
 Tests:
 
 ```sh
-node --test
+npm test
 ```
+
+## Releases
+
+Tagged releases include `dist/ui-server.mjs`, `dist/ui.js`, and
+`dist/ui.css`. The server exposes the browser files at `/assets/ui.js` and
+`/assets/ui.css`, so running the package needs no npm install and no build.
+The Homebrew formula remains a HEAD source build.
+
+Maintainers create candidate archives after a clean build:
+
+```sh
+node scripts/package.mjs v1.2.3 --output release
+node scripts/release-smoke.mjs release/portless-home-v1.2.3.tar.gz
+```
+
+The command writes deterministic `.tar.gz` and `.zip` archives plus a
+`*.sha256` file. It copies an explicit release manifest, including the
+installers, built UI, runtime source, and referenced docs, and excludes
+`node_modules`. It uses the system `tar` and `zip` tools because Node does
+not provide archive writers. The manifest order, file timestamps, archive
+ownership, gzip timestamp, and stripped zip metadata keep repeated builds on
+the release runner reproducible.
+
+Signed and notarized macOS binaries and a Homebrew cask are tracked separately
+in #34. They are not part of these Node release archives.

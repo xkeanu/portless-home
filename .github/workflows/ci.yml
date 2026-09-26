@@ -18,6 +18,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - name: install contributor dependencies
+        run: npm ci
+      - name: build and test
+        run: |
+          npm run build
+          node --test
       - name: syntax checks
         run: |
           node --check server.mjs
@@ -27,6 +34,7 @@ jobs:
           node --check i18n.mjs
           node --check live.mjs
           node --check launch.mjs
+          node --check dist/ui-server.mjs
           bash -n install.sh
           bash -n uninstall.sh
           sh -n menubar/portless-home.15s.sh
@@ -50,6 +58,13 @@ jobs:
           page=$(curl -sf http://127.0.0.1:5995)
           echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
           if echo "$page" | grep -q 'dead'; then echo "dead-pid app not filtered"; exit 1; fi
+          node scripts/package.mjs v0.0.0-ci --output .release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.6.1
+      - name: packaged Node 20.6 runtime smoke test
+        run: |
+          node scripts/release-smoke.mjs .release/portless-home-v0.0.0-ci.tar.gz
 
   windows:
     runs-on: windows-latest
@@ -60,8 +75,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: tests
-        run: node --test
+          cache: npm
+      - name: build and test
+        run: |
+          npm ci
+          npm run build
+          node --test
       # Windows PowerShell 5.1 (`powershell`), the one every Windows box has.
       - name: install, tray, uninstall
         shell: powershell
@@ -79,12 +98,18 @@ jobs:
           if ((Get-ScheduledTask portless-home).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
           (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/api/menubar).Content
           $installDir = "$env:USERPROFILE\.portless-home"
+          foreach ($file in 'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css') {
+            if (-not (Test-Path "$installDir\$file")) { throw "installed asset missing: $file" }
+          }
           $settings = Get-Content "$installDir\service.env"
           if ($settings -notcontains "PORTLESS_APPS=$installDir\apps.json") { throw 'registry path missing from service.env' }
           $registry = @{ enabled = $true; apps = @(@{ hostname = 'fixture.localhost'; cwd = $installDir; command = 'node --version' }) } | ConvertTo-Json -Depth 3
           [IO.File]::WriteAllText("$installDir\apps.json", $registry)
           $page = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/).Content
           if (-not $page.Contains('data-start="fixture.localhost"')) { throw 'installed service did not read the local registry' }
+          foreach ($asset in 'assets/ui.js', 'assets/ui.css') {
+            if ((Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:5995/$asset").StatusCode -ne 200) { throw "missing $asset" }
+          }
           $tray = Start-Process powershell -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', 'tray\portless-home-tray.ps1' -PassThru
           Start-Sleep -Seconds 8
           if ($tray.HasExited) { throw "tray exited with $($tray.ExitCode)" }
