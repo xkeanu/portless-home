@@ -9,6 +9,7 @@ import { localRequest, readRegistry } from './launch.mjs';
 import { launchCard, page } from './render.mjs';
 import { strings } from './i18n.mjs';
 import { runInNewContext } from 'node:vm';
+import { Readable } from 'node:stream';
 
 const send = (port, { path = '/', method = 'GET', headers = {}, body } = {}) => new Promise((resolve, reject) => {
 	const req = request({ host: '127.0.0.1', port, path, method, headers }, (res) => {
@@ -61,8 +62,11 @@ test('local request check requires a loopback socket, expected Host and no proxy
 	for (const remoteAddress of ['100.64.0.1', '192.168.1.2', undefined]) {
 		assert.equal(localRequest({ ...req, socket: { ...req.socket, remoteAddress } }), false);
 	}
-	for (const host of ['evil.example:5995', 'localhost:80', 'localhost.evil:5995', undefined]) {
+	for (const host of ['evil.example:5995', 'localhost:80', 'localhost', '127.0.0.1', 'localhost.evil:5995', undefined]) {
 		assert.equal(localRequest({ ...req, headers: { host } }), false);
+	}
+	for (const host of ['localhost', '127.0.0.1', 'localhost:80', '127.0.0.1:80']) {
+		assert.equal(localRequest({ socket: { ...req.socket, localPort: 80 }, headers: { host } }), true);
 	}
 });
 
@@ -94,6 +98,17 @@ setTimeout(() => process.exit(8), 10000).unref();`);
 	const headers = { origin: `http://127.0.0.1:${port}`, 'content-type': 'application/json', 'sec-fetch-site': 'same-origin' };
 	const start = (body = { hostname: app.hostname }, overrides = {}) => send(port, { path: '/start', method: 'POST', body, headers: { ...headers, ...overrides } });
 	assert.equal((await start()).status, 404);
+	// Exercise the real handler with port 80 metadata without binding a privileged port.
+	for (const host of ['localhost', '127.0.0.1', 'localhost:80', '127.0.0.1:80']) {
+		const req = Readable.from([JSON.stringify({ hostname: app.hostname })]);
+		Object.assign(req, {
+			method: 'POST', url: '/start', socket: { remoteAddress: '127.0.0.1', localPort: 80 },
+			headers: { ...headers, host, origin: `http://${host.replace(':80', '')}` },
+		});
+		let code;
+		await handler(req, { writeHead: (status) => { code = status; return { end() {} }; } });
+		assert.equal(code, 404, `${host} should pass access checks and reach the empty registry`);
+	}
 	config([app], false);
 	assert.equal((await start()).status, 404);
 	assert.doesNotMatch((await send(port)).data, /data-start="/);

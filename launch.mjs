@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 export const localRequest = (req) => {
 	if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) return false;
 	const hosts = [`127.0.0.1:${req.socket.localPort}`, `localhost:${req.socket.localPort}`];
+	if (req.socket.localPort === 80) hosts.push('127.0.0.1', 'localhost');
 	if (!hosts.includes(req.headers.host)) return false;
 	return !Object.keys(req.headers).some((h) => /^(forwarded$|x-forwarded-|tailscale-)/i.test(h));
 };

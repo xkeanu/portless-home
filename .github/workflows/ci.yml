@@ -78,6 +78,13 @@ jobs:
           }
           if ((Get-ScheduledTask portless-home).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
           (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/api/menubar).Content
+          $installDir = "$env:USERPROFILE\.portless-home"
+          $settings = Get-Content "$installDir\service.env"
+          if ($settings -notcontains "PORTLESS_APPS=$installDir\apps.json") { throw 'registry path missing from service.env' }
+          $registry = @{ enabled = $true; apps = @(@{ hostname = 'fixture.localhost'; cwd = $installDir; command = 'node --version' }) } | ConvertTo-Json -Depth 3
+          [IO.File]::WriteAllText("$installDir\apps.json", $registry)
+          $page = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/).Content
+          if (-not $page.Contains('data-start="fixture.localhost"')) { throw 'installed service did not read the local registry' }
           $tray = Start-Process powershell -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', 'tray\portless-home-tray.ps1' -PassThru
           Start-Sleep -Seconds 8
           if ($tray.HasExited) { throw "tray exited with $($tray.ExitCode)" }

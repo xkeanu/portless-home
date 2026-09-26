@@ -173,7 +173,7 @@ const layout = async (req, res) => {
 };
 
 const start = async (req, res) => {
-	if (!localRequest(req) || req.headers.origin !== `http://${req.headers.host}` ||
+	if (!localRequest(req) || req.headers.origin !== new URL(`http://${req.headers.host}`).origin ||
 		(req.headers['sec-fetch-site'] && req.headers['sec-fetch-site'] !== 'same-origin')) return fail(res, 403);
 	if (req.headers['content-type']?.split(';')[0].trim() !== 'application/json') return fail(res, 415);
 	const payload = await readJson(req);
