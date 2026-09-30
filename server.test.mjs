@@ -14,7 +14,7 @@ const documentOf = (html) => new JSDOM(html).window.document;
 // Missing fixture files must never fall back to the developer's registry or peers.
 beforeEach((t) => {
 	const dir = mkdtempSync(join(tmpdir(), 'portless-home-config-'));
-	const keys = ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS', 'PORTLESS_APPS'];
+	const keys = ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS', 'PORTLESS_APPS', 'PORTLESS_EXTERNAL_APPS'];
 	const previous = new Map(keys.map((key) => [key, process.env[key]]));
 	for (const key of keys) process.env[key] = join(dir, key + '.json');
 	t.after(() => {
@@ -37,9 +37,9 @@ const get = (port) =>
 		req.end();
 	});
 
-const getPath = (port, path, method = 'GET') =>
+const getPath = (port, path, method = 'GET', headers = {}) =>
 	new Promise((resolve, reject) => {
-		const req = request({ host: '127.0.0.1', port, method, path }, (res) => {
+		const req = request({ host: '127.0.0.1', port, method, path, headers }, (res) => {
 			const chunks = [];
 			res.on('data', (chunk) => chunks.push(chunk));
 			res.on('end', () =>
@@ -890,12 +890,13 @@ const bootFixture = async (dir, files) => {
 	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	process.env.PORTLESS_LAYOUT = join(dir, 'layout.json');
 	process.env.PORTLESS_PEERS = join(dir, 'peers.json');
+	process.env.PORTLESS_EXTERNAL_APPS = join(dir, 'external-apps.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}-${Math.random()}`);
 	const app = createServer(handler);
 	await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve));
 	const close = () => {
 		app.close();
-		for (const key of ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS']) delete process.env[key];
+		for (const key of ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS', 'PORTLESS_EXTERNAL_APPS']) delete process.env[key];
 	};
 	return { port: app.address().port, close };
 };
@@ -1206,4 +1207,48 @@ test('UI assets have correct MIME types and only public bundles are served', asy
 	} finally {
 		close();
 	}
+});
+
+test('external links render locally and through a proxy without probes or peer/menu exposure', async (t) => {
+	let externalRequests = 0;
+	const target = createServer((req, res) => { externalRequests++; res.end(); });
+	await new Promise((resolve) => target.listen(0, '127.0.0.1', resolve));
+	t.after(() => target.close());
+	const dir = mkdtempSync(join(tmpdir(), 'portless-external-http-'));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const url = `http://127.0.0.1:${target.address().port}/preview?q=one#two`;
+	const hostile = '</script><script>bad()</script><img src=x onerror=bad()>';
+	const { port, close } = await bootFixture(dir, {
+		'routes.json': [],
+		'external-apps.json': { apps: [
+			{ label: hostile, url },
+			{ label: 'Invalid', url: 'javascript:bad()' },
+			{ label: 'Credentials', url: 'https://user:password@example.test/' },
+		] },
+	});
+	t.after(close);
+	for (const headers of [{}, { host: 'device.example.ts.net', 'x-forwarded-proto': 'https', 'tailscale-user-login': 'visitor@example.test' }]) {
+		const response = await getPath(port, '/', 'GET', headers);
+		assert.equal(response.status, 200);
+		const doc = documentOf(response.data);
+		const section = doc.querySelector('.external-apps');
+		assert.equal(section.querySelectorAll('a').length, 1);
+		assert.equal(section.querySelector('a').getAttribute('href'), url);
+		assert.equal(section.querySelector('.name').textContent, hostile);
+		assert.equal(section.querySelector('.dot,button,[data-host],[data-start]'), null);
+		assert.equal(doc.querySelector('img'), null);
+		assert.equal(doc.querySelectorAll('script').length, 2);
+		assert.equal(JSON.parse(doc.querySelector('#page-data').textContent).external[0].label, hostile);
+		assert.doesNotMatch(response.data, /javascript:|user:password/);
+	}
+	assert.deepEqual(JSON.parse((await getPath(port, '/api/routes')).data).apps, []);
+	assert.doesNotMatch((await getPath(port, '/api/menubar')).data, /preview\?q=one/);
+	assert.equal(externalRequests, 0);
+	writeFileSync(join(dir, 'external-apps.json'), JSON.stringify({ apps: [{ label: 'Edited', url }] }));
+	assert.equal(documentOf((await get(port)).data).querySelector('.external-apps .name').textContent, 'Edited');
+	writeFileSync(join(dir, 'external-apps.json'), '{broken');
+	const malformed = await get(port);
+	assert.equal(malformed.status, 200);
+	assert.equal(documentOf(malformed.data).querySelector('.external-apps'), null);
+	assert.equal(externalRequests, 0);
 });

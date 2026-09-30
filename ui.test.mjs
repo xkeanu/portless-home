@@ -12,6 +12,7 @@ const base = {
 	routes: [],
 	peers: [],
 	registered: [],
+	external: [],
 	tailnetUp: true,
 	t: strings('en'),
 	stamp: 'abc123',
@@ -205,6 +206,26 @@ test('a starting launcher schedules a two-second refresh', async () => {
 	try {
 		assert.equal(ui.document.querySelector('[data-start]').disabled, true);
 		assert.ok(ui.timers.some((timer) => timer.delay === 2000));
+	} finally { ui.close(); }
+});
+
+test('configured links survive hydration in order without health or mutation controls', async () => {
+	const external = [
+		{ label: '</script><img src=x onerror=evil()>', url: 'https://example.test/preview?q=%3Cscript%3E#view' },
+		{ label: 'Local app', url: 'http://localhost:3000/' },
+	];
+	const ui = await mount({ external, t: strings('de'), routes: [route('demo.localhost')], peers: [{ device: 'Other device', apps: [] }] });
+	try {
+		const section = ui.document.querySelector('.external-apps');
+		assert.equal(section.querySelector('h2').textContent, 'Weitere Apps');
+		assert.deepEqual([...section.querySelectorAll('a')].map((a) => a.getAttribute('href')), external.map((app) => app.url));
+		assert.deepEqual([...section.querySelectorAll('.name')].map((name) => name.textContent), external.map((app) => app.label));
+		assert.equal(section.querySelector('.dot,button,[data-host],[data-start]'), null);
+		assert.equal(ui.document.querySelector('img'), null);
+		assert.equal(ui.document.querySelectorAll('section').length, 3);
+		assert.ok(ui.document.querySelector('button.name[data-host="demo.localhost"]'));
+		assert.deepEqual(ui.requests, []);
+		assert.deepEqual(ui.errors, []);
 	} finally { ui.close(); }
 });
 

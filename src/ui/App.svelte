@@ -180,6 +180,25 @@
 	{:else}<p class="empty">{t.empty}</p>{/if}
 {/snippet}
 
+{#snippet externalApps()}
+	{#if model.external?.length}
+		<section class="external-apps" aria-labelledby="external-apps-heading">
+			<h2 id="external-apps-heading">{t.external}</h2>
+			<p class="external-note">{t.externalNote}</p>
+			<ul>
+				{#each model.external as app (app.url)}
+					<li class="linked">
+						<a class="peer-link" href={app.url}>
+							<span class="name">{app.label}</span>
+							<span class="url">{app.url}</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+{/snippet}
+
 <main>
 	<h1>{t.title}</h1>
 	{#if !model.tailnetUp}
@@ -190,6 +209,7 @@
 			<h2>{model.device}</h2>
 			{@render localApps()}
 		</section>
+		{@render externalApps()}
 		{#each model.peers as peer, peerIndex (peerIndex)}
 			{#if peer}
 				<section>
@@ -202,6 +222,7 @@
 		{/each}
 	{:else}
 		{@render localApps()}
+		{@render externalApps()}
 	{/if}
 </main>
 
@@ -233,6 +254,9 @@
 	a.url,.peer-link{text-decoration:none}
 	a.url::after,.peer-link::after{content:"";position:absolute;inset:0}
 	.peer-link{display:flex;flex-direction:column;gap:2px}
+	.external-apps h2{color:#8a8a94}
+	.external-note{color:#8a8a94;font-size:13px;margin:0 0 12px}
+	.external-apps .name,.external-apps .url{overflow-wrap:anywhere}
 	.empty{color:#8a8a94;font-size:14px}
 	.banner{background:#2a2014;border:1px solid #574018;border-radius:10px;color:#e8b761;font-size:13px;padding:12px 16px;margin:16px 0}
 	.banner code{font-family:ui-monospace,monospace;color:#f0cf8e}
