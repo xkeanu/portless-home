@@ -157,6 +157,37 @@ yourself (once; it persists across reboots):
 tailscale serve --bg --https=443 http://127.0.0.1:5995
 ```
 
+## Apps started outside Portless
+
+Add known app URLs to `~/.portless-home/external-apps.json`:
+
+```json
+{
+  "apps": [
+    { "label": "Preview", "url": "https://device.example.ts.net:8445/preview" },
+    { "label": "Local dashboard", "url": "http://localhost:3000/" }
+  ]
+}
+```
+
+The directory shows these links in an **Other apps** section, in configuration
+order. They are visible to everyone who can open this device's directory,
+including tailnet visitors. Each URL must already work from the visitor's
+device. A `localhost` URL opens on the visitor's own machine; adding a URL
+does not create a Tailscale share.
+
+Only absolute HTTP/HTTPS URLs with nonempty labels are accepted. Labels can
+contain up to 64 characters and URLs up to 2048. Invalid entries and duplicate
+URLs are skipped; the first 100 entries are considered. URLs with embedded
+usernames or passwords are rejected. Labels render as plain text.
+
+`PORTLESS_EXTERNAL_APPS` overrides the file location. Edit the file and reload
+the page to see changes without restarting. Missing or malformed configuration
+shows no extra section; deleting the file removes the links. The server never
+requests these URLs or checks availability, so entries have no health dots or
+app controls. They are absent from peer snapshots and menu bar clients. This
+configuration is separate from the local launcher below.
+
 ## Start registered apps locally
 
 To keep stopped apps on the page, create `~/.portless-home/apps.json`

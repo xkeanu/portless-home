@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # A checkout needs its contributor build before it can be installed. Check every
 # input before creating the install directory or touching an existing service.
-for FILE in server.mjs render.mjs i18n.mjs peers.mjs menubar.mjs live.mjs launch.mjs \
+for FILE in server.mjs render.mjs i18n.mjs peers.mjs menubar.mjs live.mjs launch.mjs external.mjs \
 	dist/ui-server.mjs dist/ui.js dist/ui.css; do
 	if [ ! -f "$SCRIPT_DIR/$FILE" ]; then
 		echo "Missing $FILE. Run npm ci && npm run build before installing from a checkout."
@@ -39,7 +39,7 @@ esac
 NODE_BIN="$(command -v node)" || { echo "node not found on PATH."; exit 1; }
 
 mkdir -p "$INSTALL_DIR/dist"
-cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$SCRIPT_DIR/i18n.mjs" "$SCRIPT_DIR/peers.mjs" "$SCRIPT_DIR/menubar.mjs" "$SCRIPT_DIR/live.mjs" "$SCRIPT_DIR/launch.mjs" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$SCRIPT_DIR/i18n.mjs" "$SCRIPT_DIR/peers.mjs" "$SCRIPT_DIR/menubar.mjs" "$SCRIPT_DIR/live.mjs" "$SCRIPT_DIR/launch.mjs" "$SCRIPT_DIR/external.mjs" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/dist/ui-server.mjs" "$SCRIPT_DIR/dist/ui.js" "$SCRIPT_DIR/dist/ui.css" "$INSTALL_DIR/dist/"
 
 if [ "$AUTOSTART" = 1 ]; then AT_LOAD=true; RESTART=always; else AT_LOAD=false; RESTART=no; fi

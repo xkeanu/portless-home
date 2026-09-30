@@ -102,9 +102,13 @@ export const smokeArchive = async (archive) => {
 		const layout = join(temp, 'layout.json');
 		const peers = join(temp, 'peers.json');
 		const apps = join(temp, 'apps.json');
+		const external = join(temp, 'external-apps.json');
+		const externalLabel = 'External fixture';
+		const externalUrl = 'https://external-fixture.example.ts.net:8443/path?view=home';
 		writeFileSync(routes, JSON.stringify([{ hostname: 'fixture.localhost', port: 1, pid: process.pid, tailscaleUrl: 'https://fixture.example.ts.net' }]));
 		writeFileSync(peers, JSON.stringify({ peers: [] }));
 		writeFileSync(apps, JSON.stringify({ enabled: false, apps: [] }));
+		writeFileSync(external, JSON.stringify({ apps: [{ label: externalLabel, url: externalUrl }] }));
 		const server = await startServer(app, {
 			...process.env,
 			PORTLESS_ROUTES: routes,
@@ -112,12 +116,21 @@ export const smokeArchive = async (archive) => {
 			PORTLESS_LAYOUT: layout,
 			PORTLESS_PEERS: peers,
 			PORTLESS_APPS: apps,
+			PORTLESS_EXTERNAL_APPS: external,
 		});
 		try {
 			const page = await waitForServer(server.port, server.child, server.stderr);
 			assert.equal(page.status, 200);
 			assert.match(page.body, /fixture/);
+			assert.ok(page.body.includes(externalLabel), 'configured external app label was missing');
+			assert.ok(page.body.includes(`href="${externalUrl}"`), 'configured external app link was missing');
 			assert.match(page.body, /(?:src|href)="\/assets\/ui\.(?:js|css)"/);
+			for (const path of ['/api/routes', '/api/menubar']) {
+				const result = await get(server.port, path);
+				assert.equal(result.status, 200);
+				assert.ok(!result.body.includes(externalLabel), `external app label leaked into ${path}`);
+				assert.ok(!result.body.includes(externalUrl), `external app URL leaked into ${path}`);
+			}
 			const script = await get(server.port, '/assets/ui.js');
 			assert.equal(script.status, 200);
 			assert.match(script.headers['content-type'] || '', /javascript/);

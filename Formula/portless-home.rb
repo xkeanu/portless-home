@@ -9,7 +9,7 @@ class PortlessHome < Formula
   def install
     system "npm", "ci", "--ignore-scripts"
     system "npm", "run", "build"
-    libexec.install "server.mjs", "render.mjs", "i18n.mjs", "peers.mjs", "menubar.mjs", "live.mjs", "launch.mjs", "dist"
+    libexec.install "server.mjs", "render.mjs", "i18n.mjs", "peers.mjs", "menubar.mjs", "live.mjs", "launch.mjs", "external.mjs", "dist"
     pkgshare.install "menubar"
     (bin/"portless-home").write <<~SH
       #!/bin/sh

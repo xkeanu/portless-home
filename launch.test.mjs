@@ -74,7 +74,7 @@ test('local request check requires a loopback socket, expected Host and no proxy
 
 test('HTTP launcher enforces local-only opt-in, executes config, prevents duplicates and reports failure', async (t) => {
 	const dir = mkdtempSync(join(tmpdir(), 'portless-launch-'));
-	const paths = { PORTLESS_ROUTES: 'routes.json', PORTLESS_NAMES: 'names.json', PORTLESS_LAYOUT: 'layout.json', PORTLESS_PEERS: 'peers.json', PORTLESS_APPS: 'apps.json' };
+	const paths = { PORTLESS_ROUTES: 'routes.json', PORTLESS_NAMES: 'names.json', PORTLESS_LAYOUT: 'layout.json', PORTLESS_PEERS: 'peers.json', PORTLESS_APPS: 'apps.json', PORTLESS_EXTERNAL_APPS: 'external-apps.json' };
 	const previous = {};
 	for (const [key, name] of Object.entries(paths)) { previous[key] = process.env[key]; process.env[key] = join(dir, name); }
 	writeFileSync(join(dir, 'routes.json'), '[]');

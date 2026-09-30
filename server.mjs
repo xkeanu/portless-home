@@ -12,12 +12,14 @@ import { menubar } from './menubar.mjs';
 import { strings } from './i18n.mjs';
 import { events, readText, stamp } from './live.mjs';
 import { launcher, localRequest, readRegistry } from './launch.mjs';
+import { readExternalApps } from './external.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
 const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 'layout.json');
 const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.portless-home', 'peers.json');
 const APPS = process.env.PORTLESS_APPS || join(homedir(), '.portless-home', 'apps.json');
+const EXTERNAL_APPS = process.env.PORTLESS_EXTERNAL_APPS || join(homedir(), '.portless-home', 'external-apps.json');
 const launches = launcher();
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
@@ -244,6 +246,7 @@ export const handler = async (req, res) => {
 			label: displayName(r.hostname, names), up: up[i], pinned: pinned.has(r.hostname),
 		})),
 		registered: stopped.map((a) => ({ hostname: a.hostname, label: displayName(a.hostname, names), state: launches.state(a.hostname) })),
+		external: readExternalApps(EXTERNAL_APPS),
 		peers, tailnetUp: hasTailnetAddr(networkInterfaces()), t, stamp: stamp(text),
 	};
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language', 'Cache-Control': 'no-store' });

@@ -9,7 +9,7 @@ export const displayName = (hostname, names) => names[hostname] || hostname.repl
 const pageData = (model) => JSON.stringify(model).replace(/</g, '\\u003c');
 
 export const page = (data = {}) => {
-	const model = { device: '', routes: [], peers: [], registered: [], tailnetUp: true, t: strings(), stamp: '', ...data };
+	const model = { device: '', routes: [], peers: [], registered: [], external: [], tailnetUp: true, t: strings(), stamp: '', ...data };
 	return `<!DOCTYPE html>
 <html lang="${esc(model.t.lang)}"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
