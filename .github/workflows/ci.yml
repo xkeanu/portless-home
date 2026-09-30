@@ -34,6 +34,7 @@ jobs:
           node --check i18n.mjs
           node --check live.mjs
           node --check launch.mjs
+          node --check external.mjs
           node --check dist/ui-server.mjs
           bash -n install.sh
           bash -n uninstall.sh
@@ -53,10 +54,12 @@ jobs:
         run: |
           mkdir -p ~/.portless
           printf '[{"hostname":"demo.localhost","pid":%d,"tailscaleUrl":"https://mac.tailnet.ts.net:8443"},{"hostname":"dead.localhost","pid":4194305}]' $$ > ~/.portless/routes.json
-          node server.mjs &
+          printf '{"apps":[{"label":"External CI fixture","url":"https://external-ci.example.ts.net:8443/path"}]}\n' > "$RUNNER_TEMP/portless-home-external-apps.json"
+          PORTLESS_EXTERNAL_APPS="$RUNNER_TEMP/portless-home-external-apps.json" node server.mjs &
           sleep 1
           page=$(curl -sf http://127.0.0.1:5995)
           echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
+          echo "$page" | grep -Fq 'href="https://external-ci.example.ts.net:8443/path"' || { echo "missing external app link"; exit 1; }
           if echo "$page" | grep -q 'dead'; then echo "dead-pid app not filtered"; exit 1; fi
           node scripts/package.mjs v0.0.0-ci --output .release
       - uses: actions/setup-node@v4
@@ -98,15 +101,19 @@ jobs:
           if ((Get-ScheduledTask portless-home).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
           (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/api/menubar).Content
           $installDir = "$env:USERPROFILE\.portless-home"
-          foreach ($file in 'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css') {
+          foreach ($file in 'external.mjs', 'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css') {
             if (-not (Test-Path "$installDir\$file")) { throw "installed asset missing: $file" }
           }
           $settings = Get-Content "$installDir\service.env"
           if ($settings -notcontains "PORTLESS_APPS=$installDir\apps.json") { throw 'registry path missing from service.env' }
+          if ($settings -notcontains "PORTLESS_EXTERNAL_APPS=$installDir\external-apps.json") { throw 'external app config path missing from service.env' }
           $registry = @{ enabled = $true; apps = @(@{ hostname = 'fixture.localhost'; cwd = $installDir; command = 'node --version' }) } | ConvertTo-Json -Depth 3
           [IO.File]::WriteAllText("$installDir\apps.json", $registry)
+          $external = @{ apps = @(@{ label = 'External CI fixture'; url = 'https://external-ci.example.ts.net:8443/path' }) } | ConvertTo-Json -Depth 3
+          [IO.File]::WriteAllText("$installDir\external-apps.json", $external)
           $page = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/).Content
           if (-not $page.Contains('data-start="fixture.localhost"')) { throw 'installed service did not read the local registry' }
+          if (-not $page.Contains('href="https://external-ci.example.ts.net:8443/path"')) { throw 'installed service did not read the external app config' }
           foreach ($asset in 'assets/ui.js', 'assets/ui.css') {
             if ((Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:5995/$asset").StatusCode -ne 200) { throw "missing $asset" }
           }
