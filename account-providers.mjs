@@ -288,7 +288,7 @@ async function probeCodex(command, home, env, checkpoint) {
 }
 
 export function createProviders(config = {}, deps = {}) {
-	const env = deps.env ?? process.env, home = deps.home ?? homedir(), platform = deps.platform ?? process.platform;
+	const env = deps.env ?? process.env, home = deps.home ?? (env.PORTLESS_ACCOUNT_HOME || homedir()), platform = deps.platform ?? process.platform;
 	const fetcher = deps.fetch ?? globalThis.fetch, clock = deps.clock ?? Date.now;
 	const keychain = deps.keychain ?? createMacKeychain(deps.run ?? run);
 	const rawClaudeDir = config.claudeDir ?? env.CLAUDE_CONFIG_DIR;
@@ -423,7 +423,11 @@ export function createProviders(config = {}, deps = {}) {
 				try {
 					await writeProviderJson(join(temporary, 'auth.json'), saved.auth);
 					const childEnv = Object.fromEntries(['PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'SYSTEMROOT', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'SSL_CERT_FILE'].filter((key) => env[key]).map((key) => [key, env[key]]));
-					Object.assign(childEnv, { CODEX_HOME: temporary, HOME: temporary });
+					Object.assign(childEnv, { CODEX_HOME: temporary, HOME: temporary, USERPROFILE: temporary, TMPDIR: temporary, TMP: temporary, TEMP: temporary });
+					if (platform === 'win32') {
+						Object.assign(childEnv, { APPDATA: join(temporary, 'AppData', 'Roaming'), LOCALAPPDATA: join(temporary, 'AppData', 'Local') });
+						await mkdir(childEnv.APPDATA, { recursive: true }); await mkdir(childEnv.LOCALAPPDATA, { recursive: true });
+					}
 					const result = await (deps.appServer ?? probeCodex)(config.codexCommand ?? 'codex', temporary, childEnv, checkpoint);
 					const { payload, identity: updated } = await checkpoint();
 					if (updated.accountId !== identity.accountId || result.account?.type !== 'chatgpt' || result.account.email && identity.email && result.account.email !== identity.email) fail('IDENTITY_MISMATCH', 'Codex renewed a different account.');

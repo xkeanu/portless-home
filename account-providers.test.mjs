@@ -222,6 +222,38 @@ test('isolated Codex refresh returns native rotated tokens and removes temporary
 	assert.ok(!(await readdir(f.home)).some((name) => name.startsWith('portless-home-codex-')));
 });
 
+test('Windows Codex subprocess homes and temporary paths are private and never inherited', async (t) => {
+	const f = await fixture(t, { platform: 'win32', env: { USERPROFILE: 'must-not-inherit-profile', APPDATA: 'must-not-inherit-roaming', LOCALAPPDATA: 'must-not-inherit-local', TMPDIR: 'must-not-inherit-temp' }, appServer: async (command, temporary, env) => {
+		for (const key of ['HOME', 'CODEX_HOME', 'USERPROFILE', 'TMPDIR', 'TMP', 'TEMP']) assert.equal(env[key], temporary);
+		assert.equal(env.APPDATA, join(temporary, 'AppData', 'Roaming'));
+		assert.equal(env.LOCALAPPDATA, join(temporary, 'AppData', 'Local'));
+		assert.ok((await stat(env.APPDATA)).isDirectory()); assert.ok((await stat(env.LOCALAPPDATA)).isDirectory());
+		return { account: { type: 'chatgpt', email: 'alice@example.com', planType: 'pro' }, usage: codexUsage };
+	} });
+	await f.providers.codex.usage(codexPayload());
+	assert.ok(!(await readdir(f.home)).some((name) => name.startsWith('portless-home-codex-')));
+});
+
+test('Windows service account-home defaults use the configured profile and preserve native CLI directory overrides', async (t) => {
+	const f = await fixture(t);
+	await json(f.config.claudeConfig, { oauthAccount: claudePayload().oauthAccount });
+	await json(join(f.config.claudeDir, '.credentials.json'), claudePayload().credentials);
+	await json(join(f.config.codexHome, 'auth.json'), codexPayload().auth);
+	const config = { codexSystemConfig: f.config.codexSystemConfig, codexRequirements: f.config.codexRequirements };
+	const deps = { ...f.dependencies, home: undefined, platform: 'win32', env: { PORTLESS_ACCOUNT_HOME: f.home } };
+	let providers = createProviders(config, deps);
+	assert.equal((await providers.claude.capture()).identity.email, 'alice@example.com');
+	assert.equal((await providers.codex.capture()).identity.email, 'alice@example.com');
+	const claudeDir = join(f.home, 'explicit-claude'), codexHome = join(f.home, 'explicit-codex');
+	await mkdir(claudeDir); await mkdir(codexHome);
+	await json(join(claudeDir, '.claude.json'), { oauthAccount: claudePayload('bob').oauthAccount });
+	await json(join(claudeDir, '.credentials.json'), claudePayload('bob').credentials);
+	await json(join(codexHome, 'auth.json'), codexPayload('bob').auth);
+	providers = createProviders(config, { ...deps, env: { PORTLESS_ACCOUNT_HOME: f.home, CLAUDE_CONFIG_DIR: claudeDir, CODEX_HOME: codexHome } });
+	assert.equal((await providers.claude.capture()).identity.email, 'bob@example.com');
+	assert.equal((await providers.codex.capture()).identity.email, 'bob@example.com');
+});
+
 test('Codex retains rotated tokens even when quota RPC subsequently fails', async (t) => {
 	let checkpoint;
 	const f = await fixture(t, { appServer: async (command, temporary) => {
