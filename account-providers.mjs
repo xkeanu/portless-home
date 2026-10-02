@@ -94,7 +94,14 @@ export function createMacKeychain(runCommand = run) {
 			const result = await runCommand('/usr/bin/security', ['find-generic-password', '-s', service, '-a', account, '-w']);
 			if (result.code === 44) return null;
 			if (result.code !== 0) fail('KEYCHAIN_UNAVAILABLE', 'Unlock the macOS Keychain and try again.');
-			return result.stdout.replace(/\r?\n$/, '');
+			const text = result.stdout.replace(/\r?\n$/, '');
+			// security prints non-ASCII/control bytes as bare hex. These provider
+			// items contain JSON records, so a hex-only string is never a record.
+			if (/^(?:[\da-f]{2})+$/i.test(text)) {
+				try { return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(text, 'hex')); }
+				catch { fail('INVALID_CREDENTIALS', 'The provider Keychain data is not valid.'); }
+			}
+			return text;
 		},
 		async write(service, account, value) {
 			check(service); check(account);

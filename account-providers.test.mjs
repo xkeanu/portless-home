@@ -86,6 +86,14 @@ test('macOS writes secret bytes on stdin only and reports safe errors', async ()
 	await assert.rejects(denied.write('fixture', 'fixture', secret), (error) => error.code === 'KEYCHAIN_UNAVAILABLE' && !error.message.includes('secret'));
 });
 
+test('macOS reads hex-encoded Keychain JSON without losing Unicode or escaped controls', async () => {
+	const value = JSON.stringify({ fixture: 'Unicode 🧪 and escaped newline\n' });
+	const keychain = createMacKeychain(async () => ({ code: 0, stdout: Buffer.from(value).toString('hex').toUpperCase() + '\n' }));
+	assert.equal(await keychain.read('fixture', 'fixture'), value);
+	const invalid = createMacKeychain(async () => ({ code: 0, stdout: 'FFFE\n' }));
+	await assert.rejects(invalid.read('fixture', 'fixture'), { code: 'INVALID_CREDENTIALS' });
+});
+
 test('Claude usage preserves plan-scaled percentages and scoped weekly reset windows', async (t) => {
 	let calls = 0;
 	const f = await fixture(t, { fetch: async (url, options) => { calls++; assert.equal(options.headers.Authorization, 'Bearer fixture-access-alice'); return response({ ...claudeUsage, limits: [{ scope: { model: { display_name: 'Opus' } }, percent: 40, resets_at: reset }] }); } });
