@@ -86,6 +86,50 @@ test('renewal checkpoint survives a later quota failure and does not leak creden
 	assert.equal(JSON.stringify(view).includes('fixture-secret'), false);
 });
 
+test('usage refresh bounds concurrent providers, skips disabled accounts and continues after failures', { timeout: 5000 }, async (t) => {
+	const f = fixture(t);
+	const logins = Array.from({ length: 12 }, (_, i) => login(`user${i}`, 'codex'));
+	await f.vault.update((state) => {
+		state.accounts = logins.map(({ identity, payload }, i) => ({ ...identity, id: accountId('codex', identity.accountId), label: `Account ${i}`, payload, disabled: i === 11 }));
+	});
+	let release;
+	const gate = new Promise((resolve) => { release = resolve; });
+	t.after(() => release());
+	let started;
+	const firstBatch = new Promise((resolve) => { started = resolve; });
+	let concurrent = 0;
+	let maximum = 0;
+	const checked = [];
+	f.adapter.usage = async (payload, { onUpdate }) => {
+		concurrent += 1;
+		maximum = Math.max(maximum, concurrent);
+		const index = logins.findIndex((entry) => entry.payload.token === payload.token);
+		checked.push(index);
+		try {
+			if (index === 0) {
+				await onUpdate({ token: 'renewed-user0' }, logins[0].identity);
+				assert.equal(f.vault.read().accounts[0].payload.token, 'renewed-user0');
+			}
+			if (checked.length === 3) started();
+			await gate;
+			if (index === 4) throw new ProviderError('USAGE_UNAVAILABLE', 'Usage is unavailable.');
+			return { windows, observedAt: date.toISOString() };
+		} finally { concurrent -= 1; }
+	};
+	const manager = createAccountManager({ configPath: f.configPath, providersFactory: () => ({ claude: f.adapter, codex: { ...f.adapter, async capture() { throw new ProviderError('LOGIN_REQUIRED', 'Log in first.'); } } }), inspectProcesses: () => ({ claude: false, codex: false }), clock: () => date });
+	const refreshing = manager.refresh({ syncPeers: false });
+	await firstBatch;
+	assert.equal(concurrent, 3);
+	assert.equal(checked.length, 3);
+	release();
+	const view = await refreshing;
+	assert.equal(maximum, 3);
+	assert.deepEqual(checked.toSorted((a, b) => a - b), Array.from({ length: 11 }, (_, i) => i));
+	assert.equal(view.accounts[4].usageStatus, 'unavailable');
+	assert.equal(view.accounts.filter((row) => row.usageStatus === 'fresh').length, 10);
+	assert.equal(f.vault.read().accounts[0].payload.token, 'renewed-user0');
+});
+
 test('failure fallback persists verified renewed credentials but rejects a different identity', async (t) => {
 	const f = fixture(t);
 	await f.manager.capture('claude');
@@ -151,5 +195,30 @@ test('invalid preferences preserve the previous state; automatic policy only pro
 	f.setCurrent(login('bob'));
 	await f.manager.refresh();
 	assert.equal(f.vault.read().pending[0].id, id);
+	assert.equal(f.activations.length, 0);
+});
+
+test('forgetting a saved login removes its backup and routing references without changing native login or remote metadata', async (t) => {
+	const f = fixture(t);
+	await f.manager.capture('claude', 'Personal');
+	f.setCurrent(login('bob'));
+	await f.manager.capture('claude', 'Work');
+	const alice = accountId('claude', 'alice:workspace');
+	const bob = accountId('claude', 'bob:workspace');
+	await f.manager.policy({ useFirst: alice });
+	await f.vault.update((state) => {
+		state.pending = [{ id: alice, provider: 'claude' }, { id: bob, provider: 'claude' }];
+		state.remote = [{ accounts: [{ ...login('alice').identity, id: alice, label: 'Other device', preferencesUpdatedAt: date.toISOString() }] }];
+	});
+	const view = await f.manager.remove(alice);
+	const state = f.vault.read();
+	assert.deepEqual(state.accounts.map((row) => row.id), [bob]);
+	assert.equal(state.accounts[0].payload.token, 'fixture-secret-bob');
+	assert.equal(JSON.stringify(state).includes('fixture-secret-alice'), false);
+	assert.deepEqual(state.pending, [{ id: bob, provider: 'claude' }]);
+	assert.equal(state.policy.useFirst, undefined);
+	assert.equal(state.policyUpdatedAt, date.toISOString());
+	assert.equal(view.accounts.find((row) => row.id === alice).availableLocally, false);
+	assert.equal(view.accounts.find((row) => row.id === bob).active, true);
 	assert.equal(f.activations.length, 0);
 });

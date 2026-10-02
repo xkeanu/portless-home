@@ -200,6 +200,9 @@ node accounts-cli.mjs capture codex --label Work
 node accounts-cli.mjs refresh
 ```
 
+Homebrew installs the same CLI as `portless-home-accounts`; for example,
+run `portless-home-accounts enable` and `portless-home-accounts capture claude`.
+
 Open `http://127.0.0.1:5995/accounts` to see saved accounts, usage and routing
 preferences. To save another account, sign in normally through the provider
 CLI, then choose **Save current login**. Use **Switch account** after finishing
@@ -208,6 +211,13 @@ after the switch. The manager checks for running clients again immediately
 before applying it. It cannot prove an interactive session is idle, change a
 running session's cached login, or restart clients. Claude Desktop, Claude Code
 Desktop, Codex app and ChatGPT app logins are outside this feature.
+
+**Forget saved login** deletes that account's saved backup on this device and
+clears its queued switch and use-first preference. It leaves the current CLI
+signed in and keeps metadata held by other devices. The CLI supports
+`remove ACCOUNT_ID --dry-run` to preview this action and
+`remove ACCOUNT_ID --yes` to confirm it; get account IDs with `status`.
+Remote-only accounts have no local backup or editable settings.
 
 For another Claude account, use `/login` without first running `/logout`.
 [claude-swap's current guidance](https://github.com/realiti4/claude-swap#add-more-accounts)
@@ -267,6 +277,7 @@ curl http://127.0.0.1:5995/api/accounts/account \
 
 The server never polls account usage. **Automatically prepare switches** queues
 suggestions when you check usage, for you to apply after stopping sessions.
+Usage checks run at most three provider operations at a time.
 For continuous monitoring, explicitly run `node accounts-cli.mjs auto --interval 60`; it
 checks at a bounded interval and applies a suggested login only when no relevant
 CLI process is running. It never kills, restarts, migrates or retries user work.

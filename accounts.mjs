@@ -116,8 +116,7 @@ export const createAccountManager = ({ configPath, providersFactory, inspectProc
 				} catch (error) { loggedOut[provider] = error.code === 'LOGIN_REQUIRED'; }
 			}
 			checkpoint();
-			await Promise.all(state.accounts.map(async (row) => {
-				if (row.disabled) return;
+			const refreshAccount = async (row) => {
 				try {
 					const onUpdate = async (payload, identity) => {
 						if (!identity || identityOf(row.provider, { identity, payload }).id !== row.id) throw new AccountError('identity', 'Refreshed credentials belonged to a different login.', 502);
@@ -142,6 +141,10 @@ export const createAccountManager = ({ configPath, providersFactory, inspectProc
 					}
 					row.usageStatus = row.observedAt ? 'stale' : 'unavailable'; row.error = safeFailure(error);
 				}
+			};
+			const accountsToRefresh = state.accounts.filter((row) => !row.disabled).values();
+			await Promise.all(Array.from({ length: 3 }, async () => {
+				for (const row of accountsToRefresh) await refreshAccount(row);
 			}));
 			if (syncPeers) await synchronize(state, config);
 			const rows = await rowsOf(state, ids);
