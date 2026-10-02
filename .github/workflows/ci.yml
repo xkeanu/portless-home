@@ -64,7 +64,7 @@ jobs:
           printf '[{"hostname":"demo.localhost","pid":%d,"tailscaleUrl":"https://mac.tailnet.ts.net:8443"},{"hostname":"dead.localhost","pid":4194305}]' $$ > ~/.portless/routes.json
           printf '{"apps":[{"label":"External CI fixture","url":"https://external-ci.example.ts.net:8443/path"}]}\n' > "$RUNNER_TEMP/portless-home-external-apps.json"
           PORTLESS_ACCOUNTS="$RUNNER_TEMP/portless-home-accounts/config.json" node accounts-cli.mjs enable
-          PORTLESS_ACCOUNTS="$RUNNER_TEMP/portless-home-accounts/config.json" PORTLESS_EXTERNAL_APPS="$RUNNER_TEMP/portless-home-external-apps.json" node server.mjs &
+          PORTLESS_ACCOUNT_HOME="$RUNNER_TEMP/portless-home-provider-home" PORTLESS_ACCOUNTS="$RUNNER_TEMP/portless-home-accounts/config.json" PORTLESS_EXTERNAL_APPS="$RUNNER_TEMP/portless-home-external-apps.json" node server.mjs &
           sleep 1
           page=$(curl -sf http://127.0.0.1:5995)
           echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
