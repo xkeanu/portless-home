@@ -18,6 +18,11 @@ class PortlessHome < Formula
       exec "#{formula_opt_bin("node")}/node" "#{libexec}/server.mjs" "$@"
     SH
     (bin/"portless-home").chmod 0755
+    (bin/"portless-home-accounts").write <<~SH
+      #!/bin/sh
+      exec "#{formula_opt_bin("node")}/node" "#{libexec}/accounts-cli.mjs" "$@"
+    SH
+    (bin/"portless-home-accounts").chmod 0755
   end
 
   def caveats
@@ -35,6 +40,12 @@ class PortlessHome < Formula
 
       Menu bar (xbar/SwiftBar) plugin, to symlink into your plugin folder:
         #{opt_pkgshare}/menubar/portless-home.15s.sh
+
+      Optional CLI account management:
+        portless-home-accounts enable
+        portless-home-accounts capture claude --label Work
+        portless-home-accounts --help
+      Sign in through the provider CLI before capturing an account.
     EOS
   end
 
@@ -55,7 +66,9 @@ class PortlessHome < Formula
     assert_match "dev apps", shell_output("curl -sf http://127.0.0.1:#{port}/")
     assert_predicate libexec/"dist/ui-server.mjs", :exist?
     assert_match "Account management is off", shell_output("curl -sf http://127.0.0.1:#{port}/accounts")
-    assert_match "capture", shell_output("#{Formula["node"].opt_bin}/node #{libexec}/accounts-cli.mjs --help")
+    assert_match "capture", shell_output("#{bin}/portless-home-accounts --help")
+    assert_match '"enabled":true', shell_output("PORTLESS_ACCOUNTS=#{testpath}/account-config.json #{bin}/portless-home-accounts enable")
+    assert_predicate testpath/"account-config.json", :exist?
   ensure
     Process.kill("TERM", pid) if pid
   end

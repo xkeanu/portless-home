@@ -16,17 +16,18 @@ const commands = {
 	capture: { args: 'claude|codex [--label text]', flags: ['label'], description: 'Save the login currently installed by the provider CLI. Sign in through that CLI first.', example: 'capture claude --label Work', positionals: 1 },
 	refresh: { args: '', flags: [], description: 'Check usage and configured peers. This command prepares recommendations without applying switches.', example: 'refresh' },
 	switch: { args: 'account-id', flags: [], description: 'Apply a saved login after all sessions for that provider have stopped. Relaunch the CLI yourself.', example: 'switch claude-0123456789abcdef01234567', positionals: 1 },
+	remove: { args: 'account-id --yes | --dry-run', flags: ['yes', 'dry-run'], description: 'Forget a saved login on this device. The provider CLI stays signed in and metadata on other devices is kept. Preview with --dry-run; confirm with --yes.', example: 'remove claude-0123456789abcdef01234567 --dry-run', extraExample: 'remove claude-0123456789abcdef01234567 --yes', positionals: 1 },
 	sync: { args: '', flags: [], description: 'Fetch metadata from configured peers. Logins stay on each device.', example: 'sync' },
 	edit: { args: 'account-id [--label text] [--priority -100..100] [--reserve 0..99] [--disabled true|false] [--schedule file.json]', flags: ['label', 'priority', 'reserve', 'disabled', 'schedule'], description: 'Update local account preferences. A schedule file contains an array of UTC reserve intervals.', example: 'edit claude-0123456789abcdef01234567 --priority 10 --reserve 20', positionals: 1 },
 	policy: { args: '[--strategy best|consume-first] [--threshold 1..100] [--auto true|false] [--use-first account-id|none]', flags: ['strategy', 'threshold', 'auto', 'use-first'], description: 'Set routing preferences. Auto prepares pending switches; the watcher applies them only when explicitly started.', example: 'policy --strategy consume-first --threshold 90 --auto true' },
-	auto: { args: '--once | --interval seconds', flags: ['once', 'interval'], description: 'Opt in to applying recommended switches while CLIs are stopped. Interval must be at least 60 seconds. No sessions are killed or restarted. Stop the watcher with Ctrl-C.', example: 'auto --once' },
+	auto: { args: '--once | --interval seconds', flags: ['once', 'interval'], description: 'Opt in to applying recommended switches while CLIs are stopped. Interval must be at least 60 seconds. No sessions are killed or restarted. Stop the watcher with Ctrl-C.', example: 'auto --once', extraExample: 'auto --interval 60' },
 };
 
 class UsageError extends Error {}
 const help = (name) => {
 	if (name) {
 		const command = commands[name];
-		return `Usage: ${invocation} ${name} ${command.args}\n\n${command.description}\n\nExamples:\n  ${invocation} ${command.example}\n${name === 'auto' ? `  ${invocation} auto --interval 60\n` : ''}`;
+		return `Usage: ${invocation} ${name} ${command.args}\n\n${command.description}\n\nExamples:\n  ${invocation} ${command.example}\n${command.extraExample ? `  ${invocation} ${command.extraExample}\n` : ''}`;
 	}
 	return `Usage: ${invocation} <command> [options]\n\nCommands:\n${Object.keys(commands).map((name) => `  ${name}`).join('\n')}\n\nUse <command> --help for options and examples.\nConfiguration: PORTLESS_ACCOUNTS or ~/.portless-home/accounts/config.json\nSuccess writes JSON to stdout. Errors write JSON to stderr. No prompts.\n\nExamples:\n  ${invocation} enable\n  ${invocation} capture claude --label Work\n  ${invocation} status\n`;
 };
@@ -44,9 +45,9 @@ function parse(argv) {
 		const equals = arg.indexOf('=');
 		const flag = arg.slice(2, equals < 0 ? undefined : equals);
 		if (!commands[name].flags.includes(flag) || Object.hasOwn(flags, flag)) throw new UsageError(`Unknown or duplicate option. Example: ${invocation} ${commands[name].example}`);
-		if (flag === 'once') {
-			if (equals >= 0) throw new UsageError(`Use --once without a value. Example: ${invocation} auto --once`);
-			flags.once = true;
+		if (['once', 'yes', 'dry-run'].includes(flag)) {
+			if (equals >= 0) throw new UsageError(`Use --${flag} without a value. Example: ${invocation} ${commands[name].example}`);
+			flags[flag] = true;
 			continue;
 		}
 		const value = equals < 0 ? args[++index] : arg.slice(equals + 1);
@@ -152,6 +153,15 @@ export async function runCli(argv, options = {}) {
 			}
 			case 'refresh': result = await manager.refresh(); break;
 			case 'switch': result = await manager.switchAccount(positionals[0]); break;
+			case 'remove': {
+				if (Boolean(flags.yes) === Boolean(flags['dry-run'])) throw new UsageError(`Choose --yes or --dry-run. Example: ${invocation} ${commands.remove.example}`);
+				const snapshot = await manager.snapshot();
+				const account = snapshot.accounts.find((row) => row.id === positionals[0]);
+				if (!account?.availableLocally) throw new UsageError(`No saved login for that account on this device. Run ${invocation} status to find a local account ID.`);
+				if (flags['dry-run']) result = { dryRun: true, account: { id: account.id, provider: account.provider, label: account.label }, action: 'Forget this device\'s saved login. The provider CLI stays signed in; metadata on other devices is kept.' };
+				else result = await manager.remove(account.id);
+				break;
+			}
 			case 'sync': result = await manager.synchronize(); break;
 			case 'edit': {
 				if (!Object.keys(flags).length) throw new UsageError(`Choose an account setting. Example: ${invocation} ${commands.edit.example}`);

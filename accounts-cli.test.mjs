@@ -23,13 +23,45 @@ test('help is layered, includes examples, and never loads account settings', asy
 	assert.equal(top.code, 0);
 	assert.match(top.stdout, /PORTLESS_ACCOUNTS/);
 	assert.match(top.stdout, /Examples:/);
-	for (const name of ['enable', 'disable', 'status', 'capture', 'refresh', 'switch', 'sync', 'edit', 'policy', 'auto']) {
+	for (const name of ['enable', 'disable', 'status', 'capture', 'refresh', 'switch', 'remove', 'sync', 'edit', 'policy', 'auto']) {
 		const result = await invoke([name, '--help']);
 		assert.equal(result.code, 0);
 		assert.match(result.stdout, new RegExp(`accounts-cli.mjs ${name}`));
 		assert.match(result.stdout, /Examples:/);
 		assert.equal(result.stderr, '');
 	}
+});
+
+test('remove previews only local metadata and requires explicit confirmation before forgetting a login', async () => {
+	const local = { id: 'claude-local', provider: 'claude', label: 'Work', availableLocally: true, active: true, payload: 'fixture-private-login' };
+	const snapshot = { accounts: [local, { id: 'codex-remote', provider: 'codex', availableLocally: false }], snapshotToken: 'fixture-pairing-secret' };
+	const removed = { enabled: true, accounts: [] };
+	const calls = [];
+	const manager = {
+		snapshot: async () => { calls.push(['snapshot']); return snapshot; },
+		remove: async (id) => { calls.push(['remove', id]); return removed; },
+	};
+	const preview = await invoke(['remove', 'claude-local', '--dry-run'], { manager });
+	assert.equal(preview.code, 0);
+	assert.deepEqual(preview.data.account, { id: local.id, provider: local.provider, label: local.label });
+	assert.equal(preview.data.dryRun, true);
+	assert.match(preview.data.action, /CLI stays signed in/);
+	assert.equal(preview.stdout.includes('fixture-private-login'), false);
+	assert.equal(preview.stdout.includes('fixture-pairing-secret'), false);
+	assert.deepEqual(calls, [['snapshot']]);
+	calls.length = 0;
+	const confirmed = await invoke(['remove', 'claude-local', '--yes'], { manager });
+	assert.equal(confirmed.code, 0);
+	assert.deepEqual(confirmed.data, removed);
+	assert.deepEqual(calls, [['snapshot'], ['remove', 'claude-local']]);
+	calls.length = 0;
+	for (const id of ['codex-remote', 'missing-local']) {
+		const rejected = await invoke(['remove', id, '--yes'], { manager });
+		assert.equal(rejected.code, 2);
+		assert.equal(rejected.stdout, '');
+		assert.match(rejected.stderr, /No saved login.*status/);
+	}
+	assert.deepEqual(calls, [['snapshot'], ['snapshot']]);
 });
 
 test('enable is private and idempotent; disable preserves settings and pairing secrets', async (t) => {
@@ -84,6 +116,8 @@ test('invalid and incomplete commands fail before mutations with no interactive 
 	for (const argv of [
 		['unknown'], ['capture'], ['capture', 'desktop'], ['capture', 'claude', '--label'], ['capture', 'claude', '--label', 'x'.repeat(65)],
 		['status', '--unknown'], ['switch'], ['edit', 'fixture'], ['edit', 'fixture', '--priority', '101'], ['edit', 'fixture', '--reserve', '100'],
+		['remove'], ['remove', 'fixture'], ['remove', 'fixture', '--yes', '--dry-run'], ['remove', 'fixture', '--yes=true'],
+		['remove', 'fixture', '--dry-run=false'], ['remove', 'fixture', '--yes', '--yes'],
 		['policy'], ['policy', '--strategy', 'unknown'], ['policy', '--auto', 'yes'], ['policy', '--threshold', 'NaN'],
 		['auto'], ['auto', '--once', '--interval', '60'], ['auto', '--interval', '59'], ['auto', '--once=true'],
 	]) {
