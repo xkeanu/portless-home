@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createMacKeychain, createProviders, identifyCodex, claudeKeychainService, ProviderError } from './account-providers.mjs';
+import { createMacKeychain, createProviders, identifyCodex, claudeKeychainService, codexWindows, ProviderError } from './account-providers.mjs';
 
 const now = Date.parse('2026-10-02T12:00:00Z');
 const reset = '2026-10-02T17:00:00Z';
@@ -91,7 +91,8 @@ test('Claude usage preserves plan-scaled percentages and scoped weekly reset win
 	const f = await fixture(t, { fetch: async (url, options) => { calls++; assert.equal(options.headers.Authorization, 'Bearer fixture-access-alice'); return response({ ...claudeUsage, limits: [{ scope: { model: { display_name: 'Opus' } }, percent: 40, resets_at: reset }] }); } });
 	const result = await f.providers.claude.usage(claudePayload());
 	assert.equal(calls, 1);
-	assert.deepEqual(result.windows.map((entry) => [entry.key, entry.usedPercent, entry.windowMinutes]), [['five_hour', 25, 300], ['seven_day', 70, 10080], ['model:Opus', 40, 10080]]);
+	assert.deepEqual(result.windows.map((entry) => [entry.key, entry.usedPercent, entry.windowMinutes]), [['five_hour', 25, 300], ['seven_day', 70, 10080], ['model:opus', 40, 10080]]);
+	assert.equal(result.windows[2].model, 'opus');
 	assert.equal(result.observedAt, new Date(now).toISOString());
 });
 
@@ -100,6 +101,18 @@ test('active Claude does not rotate its saved refresh token', async (t) => {
 	const payload = claudePayload(); payload.credentials.claudeAiOauth.expiresAt = now - 1;
 	await assert.rejects(f.providers.claude.usage(payload, { allowRefresh: false }), { code: 'LOGIN_EXPIRED' });
 	assert.equal(payload.credentials.claudeAiOauth.refreshToken, 'fixture-refresh-alice');
+});
+
+test('Claude native model quotas preserve exhausted Sonnet and Opus constraints', async (t) => {
+	const f = await fixture(t, { fetch: async () => response({ ...claudeUsage, seven_day_sonnet: { utilization: 100, resets_at: reset }, seven_day_opus: { utilization: 90, resets_at: reset } }) });
+	const result = await f.providers.claude.usage(claudePayload(), { allowRefresh: false });
+	assert.deepEqual(result.windows.filter((entry) => entry.model).map((entry) => [entry.key, entry.model, entry.usedPercent, entry.windowMinutes]), [['seven_day_sonnet', 'sonnet', 100, 10080], ['seven_day_opus', 'opus', 90, 10080]]);
+});
+
+test('Codex ignores additional quota buckets without a usable native feature identity', () => {
+	const bucket = { primary_window: { used_percent: 30, limit_window_seconds: 18000, reset_at: Date.parse(reset) / 1000 } };
+	const result = codexWindows({ rate_limit: bucket, additional_rate_limits: [{ rate_limit: bucket }, { metered_feature: null, rate_limit: bucket }, { metered_feature: 'review', rate_limit: bucket }] }, true);
+	assert.deepEqual(result.map((entry) => entry.key), ['codex:primary', 'review:primary']);
 });
 
 test('inactive Claude renews once and returns rotated tokens without changing native state', async (t) => {

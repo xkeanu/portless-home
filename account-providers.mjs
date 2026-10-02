@@ -176,15 +176,23 @@ export function claudeWindows(data) {
 	for (const [key, label, minutes] of [['five_hour', '5 hours', 300], ['seven_day', 'Weekly', 10080]]) {
 		if (object(data[key])) result.push(window(key, label, data[key].utilization, iso(data[key].resets_at), minutes));
 	}
+	for (const model of ['sonnet', 'opus']) {
+		const key = `seven_day_${model}`;
+		if (object(data[key])) result.push({ ...window(key, `${model === 'sonnet' ? 'Sonnet' : 'Opus'} weekly`, data[key].utilization, iso(data[key].resets_at), 10080), model });
+	}
 	for (const limit of data.limits ?? []) {
-		const name = limit.scope?.model?.display_name;
-		if (string(name)) result.push(window(`model:${name}`, `${name} weekly`, limit.percent, iso(limit.resets_at), 10080));
+		const scoped = limit.scope?.model;
+		const name = string(scoped) ? scoped : scoped?.display_name ?? scoped?.id ?? scoped?.model_id;
+		if (!string(name)) continue;
+		const family = name.match(/sonnet|opus|haiku/i)?.[0].toLowerCase();
+		const model = family ?? scoped?.id ?? scoped?.model_id ?? name;
+		result.push({ ...window(`model:${model}`, `${name} weekly`, limit.percent, iso(limit.resets_at), 10080), model });
 	}
 	if (!result.length) fail('USAGE_UNAVAILABLE', 'The provider has not reported usage windows.');
 	return result;
 }
 export function codexWindows(data, native = false) {
-	const buckets = native ? { codex: { ...data.rate_limit }, ...Object.fromEntries((data.additional_rate_limits ?? []).map((entry) => [entry.metered_feature, entry.rate_limit])) } : data.rateLimitsByLimitId ?? { codex: data.rateLimits };
+	const buckets = native ? { codex: data.rate_limit, ...Object.fromEntries((data.additional_rate_limits ?? []).filter((entry) => string(entry?.metered_feature) && object(entry.rate_limit)).map((entry) => [entry.metered_feature, entry.rate_limit])) } : data.rateLimitsByLimitId ?? { codex: data.rateLimits };
 	const result = [];
 	for (const [id, bucket] of Object.entries(buckets)) {
 		for (const key of ['primary', 'secondary']) {
