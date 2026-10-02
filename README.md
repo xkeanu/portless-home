@@ -217,6 +217,8 @@ with an explicit error. The manager does not change the provider's storage
 setting. Custom locations can be set under `providers` in the account config:
 `claudeDir`, `claudeConfig`, `codexHome`, and `codexCommand`. The server service
 may need an absolute `codexCommand` if its `PATH` differs from your terminal.
+`PORTLESS_ACCOUNT_HOME` supplies the default provider home; the Windows installer
+sets it to your actual profile because scheduled tasks can use another home.
 
 Configuration defaults to `~/.portless-home/accounts/config.json`;
 `PORTLESS_ACCOUNTS` overrides it. Credentials are stored in an authenticated

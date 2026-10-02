@@ -10,6 +10,8 @@ class PortlessHome < Formula
     system "npm", "ci", "--ignore-scripts"
     system "npm", "run", "build"
     libexec.install "server.mjs", "render.mjs", "i18n.mjs", "peers.mjs", "menubar.mjs", "live.mjs", "launch.mjs", "external.mjs", "dist"
+    libexec.install "accounts.mjs", "accounts-http.mjs", "accounts-cli.mjs", "account-store.mjs",
+                    "account-providers.mjs", "account-processes.mjs", "account-routing.mjs", "account-sync.mjs"
     pkgshare.install "menubar"
     (bin/"portless-home").write <<~SH
       #!/bin/sh
@@ -46,11 +48,14 @@ class PortlessHome < Formula
   test do
     (testpath/"routes.json").write "[]"
     port = free_port
-    pid = spawn({ "PORT" => port.to_s, "PORTLESS_ROUTES" => (testpath/"routes.json").to_s },
+    pid = spawn({ "PORT" => port.to_s, "PORTLESS_ROUTES" => (testpath/"routes.json").to_s,
+                  "PORTLESS_ACCOUNTS" => (testpath/"account-config.json").to_s },
                 (bin/"portless-home").to_s)
     sleep 2
     assert_match "dev apps", shell_output("curl -sf http://127.0.0.1:#{port}/")
     assert_predicate libexec/"dist/ui-server.mjs", :exist?
+    assert_match "Account management is off", shell_output("curl -sf http://127.0.0.1:#{port}/accounts")
+    assert_match "capture", shell_output("#{Formula["node"].opt_bin}/node #{libexec}/accounts-cli.mjs --help")
   ensure
     Process.kill("TERM", pid) if pid
   end

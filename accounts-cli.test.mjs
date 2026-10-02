@@ -167,7 +167,7 @@ test('abort during a refresh prevents later credential writes', async () => {
 	assert.equal(switches, 0);
 });
 
-test('direct watcher process exits on SIGTERM without touching login stores', { timeout: 3000 }, async (t) => {
+test('direct watcher process exits on SIGTERM without touching login stores', { timeout: 3000, skip: process.platform === 'win32' && 'Windows force-terminates child processes instead of delivering SIGTERM' }, async (t) => {
 	const { directory, configPath } = fixture(t);
 	copyFileSync(new URL('./accounts-cli.mjs', import.meta.url), join(directory, 'accounts-cli.mjs'));
 	copyFileSync(new URL('./account-store.mjs', import.meta.url), join(directory, 'account-store.mjs'));
