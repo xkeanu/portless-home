@@ -140,12 +140,16 @@ test('account settings and routing preferences send typed metadata, including cl
 	try {
 		const settings = ui.document.querySelector('.settings-form');
 		change(ui, settings.querySelector('[name="label"]'), '<Work>');
-		change(ui, settings.querySelector('[name="priority"]'), '4');
+		const priority = settings.querySelector('[name="priority"]');
+		change(ui, priority, '101');
+		settings.requestSubmit();
+		assert.deepEqual(ui.requests, []);
+		change(ui, priority, '-4');
 		change(ui, settings.querySelector('[name="reservePercent"]'), '25');
 		settings.querySelector('[name="disabled"]').click();
 		settings.requestSubmit();
 		await settle();
-		assert.deepEqual(ui.requests[0].body, { id: 'first', label: '<Work>', priority: 4, reservePercent: 25, disabled: true });
+		assert.deepEqual(ui.requests[0].body, { id: 'first', label: '<Work>', priority: -4, reservePercent: 25, disabled: true });
 		const policy = ui.document.querySelector('[aria-labelledby="routing-heading"] form');
 		change(ui, policy.querySelector('[name="strategy"]'), 'consume-first');
 		change(ui, policy.querySelector('[name="threshold"]'), '80');

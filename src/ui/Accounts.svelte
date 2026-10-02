@@ -173,8 +173,8 @@
 								<summary>Account settings</summary>
 								<form class="settings-form" onsubmit={(event) => saveAccount(event, account)} aria-label={`Settings for ${accountLabel(account)}`}>
 									<div class="fields">
-										<label class="wide">Label<input name="label" value={account.label || ''} maxlength="120" disabled={!!working} /></label>
-										<label>Priority<input name="priority" type="number" min="0" max="1000" step="1" value={account.priority ?? 0} disabled={!!working} /></label>
+										<label class="wide">Label<input name="label" value={account.label || ''} maxlength="64" disabled={!!working} /></label>
+										<label>Priority<input name="priority" type="number" min="-100" max="100" step="1" value={account.priority ?? 0} disabled={!!working} /></label>
 										<label>Reserve %<input name="reservePercent" type="number" min="0" max="99" step="1" value={account.reservePercent ?? 0} disabled={!!working} /></label>
 									</div>
 									<p class="field-note">Priority breaks ties. Reserve keeps part of this account's allowance out of automatic routing.</p>
@@ -202,7 +202,7 @@
 							{/each}
 						</select>
 					</label>
-					<label>Account label<input bind:value={captureLabel} maxlength="120" placeholder="Optional, for example Work" disabled={!!working || !supported.length} /></label>
+					<label>Account label<input bind:value={captureLabel} maxlength="64" placeholder="Optional, for example Work" disabled={!!working || !supported.length} /></label>
 				</div>
 				{#each providers.filter((provider) => !provider.supported) as provider (provider.id)}
 					<p class="field-note">{provider.label}: {provider.error || 'Login capture is unavailable on this device.'}</p>

@@ -207,6 +207,9 @@
 {:else}
 <main>
 	<h1>{t.title}</h1>
+	{#if model.accountManagementEnabled === true}
+		<p class="account-management"><a href="/accounts" lang="en">CLI accounts</a></p>
+	{/if}
 	{#if !model.tailnetUp}
 		<p class="banner" role="status">Tailscale not running — tailnet links won't work. Reconnect: <code>tailscale up</code> or open the Tailscale app.</p>
 	{/if}
@@ -263,6 +266,9 @@
 	.peer-link{display:flex;flex-direction:column;gap:2px}
 	.external-apps h2{color:#8a8a94}
 	.external-note{color:#8a8a94;font-size:13px;margin:0 0 12px}
+	.account-management{font-size:13px;margin:12px 0 20px}
+	.account-management a{color:#a4a4ae;text-underline-offset:3px}
+	.account-management a:hover{color:#e6e6ea}
 	.external-apps .name,.external-apps .url{overflow-wrap:anywhere}
 	.empty{color:#8a8a94;font-size:14px}
 	.banner{background:#2a2014;border:1px solid #574018;border-radius:10px;color:#e8b761;font-size:13px;padding:12px 16px;margin:16px 0}
