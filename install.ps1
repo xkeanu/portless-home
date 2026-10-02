@@ -52,7 +52,8 @@ $EnvFile = Join-Path $InstallDir 'service.env'
 	"PORTLESS_PEERS=$InstallDir\peers.json",
 	"PORTLESS_APPS=$InstallDir\apps.json",
 	"PORTLESS_EXTERNAL_APPS=$InstallDir\external-apps.json",
-	"PORTLESS_ACCOUNTS=$InstallDir\accounts\config.json"
+	"PORTLESS_ACCOUNTS=$InstallDir\accounts\config.json",
+	"PORTLESS_ACCOUNT_HOME=$env:USERPROFILE"
 ) -join "`n") + "`n")
 
 # node runs as the task's own process (no cmd/powershell wrapper): Stop-ScheduledTask

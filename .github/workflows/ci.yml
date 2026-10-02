@@ -120,6 +120,7 @@ jobs:
           if ($settings -notcontains "PORTLESS_APPS=$installDir\apps.json") { throw 'registry path missing from service.env' }
           if ($settings -notcontains "PORTLESS_EXTERNAL_APPS=$installDir\external-apps.json") { throw 'external app config path missing from service.env' }
           if ($settings -notcontains "PORTLESS_ACCOUNTS=$installDir\accounts\config.json") { throw 'account config path missing from service.env' }
+          if ($settings -notcontains "PORTLESS_ACCOUNT_HOME=$env:USERPROFILE") { throw 'native account home missing from service.env' }
           $registry = @{ enabled = $true; apps = @(@{ hostname = 'fixture.localhost'; cwd = $installDir; command = 'node --version' }) } | ConvertTo-Json -Depth 3
           [IO.File]::WriteAllText("$installDir\apps.json", $registry)
           $external = @{ apps = @(@{ label = 'External CI fixture'; url = 'https://external-ci.example.ts.net:8443/path' }) } | ConvertTo-Json -Depth 3
