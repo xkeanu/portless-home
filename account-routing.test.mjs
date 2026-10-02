@@ -119,5 +119,13 @@ test('ties are deterministic and invalid policies or duplicate identities fail c
 	assert.equal(choose([account('bad', { reservePercent: '20' })]).accountId, null);
 	assert.equal(choose([account('bad', { reserveSchedule: [{ days: [8], start: '09:00', end: '10:00', reservePercent: 20 }] })]).accountId, null);
 	assert.equal(choose([account('same'), account('same')]).accountId, null);
-	assert.equal(choose(rows, { threshold: 100 }).accountId, null);
+	assert.equal(choose(rows, { threshold: 101 }).accountId, null);
+	assert.equal(choose([account('missing', { accountId: undefined })]).accountId, null);
+	assert.equal(choose([account('too-long', { id: 'x'.repeat(65) })]).accountId, null);
+	assert.equal(choose([account('bad-priority', { priority: 101 })]).accountId, null);
+});
+
+test('threshold 100 disables soft percentage switching without allowing exhausted quotas', () => {
+	assert.equal(choose([account('near-limit', { windows: [window('weekly', 99)] })], { threshold: 100 }).accountId, 'near-limit');
+	assert.equal(choose([account('exhausted', { windows: [window('weekly', 100)] })], { threshold: 100, useFirst: 'exhausted' }).accountId, null);
 });

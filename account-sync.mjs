@@ -32,14 +32,14 @@ function cleanWindow(value) {
 }
 
 function cleanSchedule(value) {
-	if (!Array.isArray(value) || value.length > 32) return null;
+	if (!Array.isArray(value) || value.length > 20) return null;
 	const result = [];
 	for (const slot of value) {
 		if (!record(slot) || !Array.isArray(slot.days) || !slot.days.length || slot.days.length > 7
 			|| !slot.days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6)
 			|| typeof slot.start !== 'string' || typeof slot.end !== 'string'
 			|| !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.end)
-			|| !percent(slot.reservePercent) || slot.reservePercent >= 100) return null;
+			|| !Number.isInteger(slot.reservePercent) || slot.reservePercent < 0 || slot.reservePercent >= 100) return null;
 		result.push({ days: [...new Set(slot.days)], start: slot.start, end: slot.end, reservePercent: slot.reservePercent });
 	}
 	return result;
@@ -47,13 +47,13 @@ function cleanSchedule(value) {
 
 function cleanAccount(value, { preserveInvalidPolicy = false } = {}) {
 	if (!record(value) || !PROVIDERS.has(value.provider)) return null;
-	const id = nonempty(value.id, 128);
+	const id = nonempty(value.id, 64);
 	const accountId = nonempty(value.accountId, 256);
 	if (!id || !accountId) return null;
 	const result = {
 		id, provider: value.provider, accountId,
 		email: text(value.email, 256) ?? '',
-		label: text(value.label, 128) ?? id,
+		label: text(value.label, 64) ?? id,
 		tier: text(value.tier, 64) ?? '',
 		active: value.active === true,
 		availableLocally: value.availableLocally === true,
@@ -65,11 +65,11 @@ function cleanAccount(value, { preserveInvalidPolicy = false } = {}) {
 	};
 	let invalidPolicy = value.disabled != null && typeof value.disabled !== 'boolean';
 	if (value.priority != null) {
-		if (!Number.isSafeInteger(value.priority) || Math.abs(value.priority) > 1000000) invalidPolicy = true;
+		if (!Number.isInteger(value.priority) || Math.abs(value.priority) > 100) invalidPolicy = true;
 		else result.priority = value.priority;
 	}
 	if (value.reservePercent != null) {
-		if (!percent(value.reservePercent) || value.reservePercent >= 100) invalidPolicy = true;
+		if (!Number.isInteger(value.reservePercent) || value.reservePercent < 0 || value.reservePercent >= 100) invalidPolicy = true;
 		else result.reservePercent = value.reservePercent;
 	}
 	if (value.reserveSchedule != null) {
@@ -124,8 +124,8 @@ export function sanitizeMetadata(accounts, { policy, policyUpdatedAt } = {}) {
 
 function cleanPolicy(value) {
 	if (!record(value) || !['best', 'consume-first'].includes(value.strategy)
-		|| !Number.isFinite(value.threshold) || value.threshold <= 0 || value.threshold >= 100
-		|| typeof value.auto !== 'boolean' || value.useFirst != null && !nonempty(value.useFirst, 128)) return null;
+		|| !Number.isInteger(value.threshold) || value.threshold <= 0 || value.threshold > 100
+		|| typeof value.auto !== 'boolean' || value.useFirst != null && !nonempty(value.useFirst, 64)) return null;
 	return { strategy: value.strategy, threshold: value.threshold, auto: value.auto, useFirst: value.useFirst ?? null };
 }
 
@@ -235,7 +235,7 @@ export function mergeMetadata(local, remote, { now = new Date() } = {}) {
 		let id = row.id;
 		if (ids.has(id)) {
 			let suffix = 1;
-			const base = `remote:${row.provider}:${row.id}`.slice(0, 115);
+			const base = `remote:${row.provider}:${row.id}`.slice(0, 52);
 			do { id = `${base}:${suffix++}`; } while (ids.has(id));
 		}
 		const merged = { ...row, id, active: false, availableLocally: false };

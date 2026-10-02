@@ -15,17 +15,17 @@ const modelFamily = (model) => /(?:^|[-_])(sonnet|opus|haiku)(?:$|[-_])/i.exec(m
 // Schedules use UTC. Overnight intervals continue into the next day; start=end
 // means the full selected day. Reserves affect ranking, never hard eligibility.
 function reserveFor(account, now) {
-	if (account.reservePercent != null && (!percent(account.reservePercent) || account.reservePercent >= 100)) return null;
+	if (account.reservePercent != null && (!Number.isInteger(account.reservePercent) || account.reservePercent < 0 || account.reservePercent >= 100)) return null;
 	let reserve = account.reservePercent ?? 0;
 	if (account.reserveSchedule == null) return reserve;
-	if (!Array.isArray(account.reserveSchedule) || account.reserveSchedule.length > 32) return null;
+	if (!Array.isArray(account.reserveSchedule) || account.reserveSchedule.length > 20) return null;
 	const date = new Date(now);
 	const day = date.getUTCDay();
 	const minute = date.getUTCHours() * 60 + date.getUTCMinutes();
 	for (const slot of account.reserveSchedule) {
 		if (!slot || !Array.isArray(slot.days) || !slot.days.length || slot.days.length > 7
 			|| !slot.days.every((day) => Number.isInteger(day) && day >= 0 && day <= 6)
-			|| !percent(slot.reservePercent) || slot.reservePercent >= 100) return null;
+			|| !Number.isInteger(slot.reservePercent) || slot.reservePercent < 0 || slot.reservePercent >= 100) return null;
 		const start = timeMinutes(slot.start);
 		const end = timeMinutes(slot.end);
 		if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
@@ -43,7 +43,7 @@ function applicableWindows(windows, model) {
 	const selected = [];
 	for (const window of windows) {
 		if (!window || typeof window.key !== 'string' || !window.key.trim() || window.key.length > 64
-			|| !percent(window.usedPercent) || !Number.isFinite(window.windowMinutes) || window.windowMinutes <= 0) return null;
+			|| !percent(window.usedPercent) || !Number.isFinite(window.windowMinutes) || window.windowMinutes <= 0 || window.windowMinutes > 525600) return null;
 		if (window.model != null && (typeof window.model !== 'string' || !window.model.trim() || window.model.length > 128)) return null;
 		if (window.models != null && (!Array.isArray(window.models) || !window.models.length || window.models.length > 16
 			|| !window.models.every((value) => typeof value === 'string' && value.trim() && value.length <= 128))) return null;
@@ -60,13 +60,15 @@ function applicableWindows(windows, model) {
 }
 
 function candidate(account, { now, model, threshold, maxAgeMs }) {
-	if (!account || typeof account.id !== 'string' || !account.id.trim() || account.id.length > 128) return { reason: 'Invalid account identity.' };
+	if (!account || typeof account.id !== 'string' || !account.id.trim() || account.id.length > 64
+		|| typeof account.accountId !== 'string' || !account.accountId.trim() || account.accountId.length > 256
+		|| /[\u0000-\u001f\u007f]/.test(account.id + account.accountId)) return { reason: 'Invalid account identity.' };
 	if (account.disabled === true) return { reason: 'Account is disabled.' };
 	if (account.availableLocally !== true) return { reason: 'Credentials are unavailable on this device.' };
 	if (account.usageStatus !== 'fresh') return { reason: 'Usage is unavailable or stale.' };
 	const observed = timestamp(account.observedAt);
 	if (!Number.isFinite(observed) || observed > now + 5000 || now - observed > maxAgeMs) return { reason: 'Usage observation is missing, stale, or ahead of this device.' };
-	if (account.priority != null && (!Number.isSafeInteger(account.priority) || Math.abs(account.priority) > 1000000)) return { reason: 'Routing priority is invalid.' };
+	if (account.priority != null && (!Number.isInteger(account.priority) || Math.abs(account.priority) > 100)) return { reason: 'Routing priority is invalid.' };
 	const reserve = reserveFor(account, now);
 	if (reserve == null) return { reason: 'Usage reserve policy is invalid.' };
 	const windows = applicableWindows(account.windows, model);
@@ -100,9 +102,9 @@ export function chooseAccount(accounts, {
 	const clock = timestamp(now);
 	const result = (accountId, reason) => ({ accountId, reason, warnings, blocked });
 	if (!Array.isArray(accounts) || !PROVIDERS.has(provider) || !['best', 'consume-first'].includes(strategy)
-		|| !Number.isFinite(clock) || !percent(threshold) || threshold <= 0 || threshold >= 100
-		|| !Number.isFinite(maxAgeMs) || maxAgeMs <= 0 || model != null && (typeof model !== 'string' || !model.trim())
-		|| useFirst != null && typeof useFirst !== 'string') return result(null, 'Routing options are invalid.');
+		|| !Number.isFinite(clock) || !Number.isInteger(threshold) || threshold <= 0 || threshold > 100
+		|| !Number.isFinite(maxAgeMs) || maxAgeMs <= 0 || model != null && (typeof model !== 'string' || !model.trim() || model.length > 128)
+		|| useFirst != null && (typeof useFirst !== 'string' || useFirst.length > 64)) return result(null, 'Routing options are invalid.');
 	const viable = [];
 	const ids = new Set();
 	for (const account of accounts) {

@@ -41,6 +41,9 @@ test('metadata rejects unknown schema, oversized snapshots, and invalid account 
 	assert.deepEqual(sanitizeMetadata([row('bad', { reservePercent: 100 }), row('bad-schedule', { reserveSchedule: [{ days: [10], start: '10:00', end: '11:00', reservePercent: 20 }] })]).accounts, []);
 	assert.equal(sanitizeMetadata([row('duplicate'), row('other', { accountId: 'provider-duplicate' })]).accounts.length, 1);
 	assert.equal(sanitizeMetadata([row('malformed-disabled', { disabled: 'false' })]).accounts.length, 0);
+	for (const overrides of [{ id: 'x'.repeat(65) }, { accountId: 'x'.repeat(257) }, { priority: 101 }, { reservePercent: 1.5 }, { reserveSchedule: Array(21).fill({ days: [1], start: '09:00', end: '17:00', reservePercent: 20 }) }]) {
+		assert.equal(sanitizeMetadata([row('invalid-bound', overrides)]).accounts.length, 0);
+	}
 	const rich = Array.from({ length: 100 }, (_, id) => row(String(id), {
 		windows: Array.from({ length: 16 }, (_, key) => ({ ...row('one').windows[0], key: String(key), models: Array(16).fill('model-'.repeat(20)) })),
 	}));
@@ -184,4 +187,5 @@ test('optional global policy is validated and copied through the snapshot allowl
 	assert.deepEqual(parseMetadata(JSON.stringify(snapshot)), snapshot);
 	assert.equal(Object.hasOwn(sanitizeMetadata([], { policy: { ...policy, auto: 'yes' }, policyUpdatedAt: now }), 'policy'), false);
 	assert.equal(Object.hasOwn(sanitizeMetadata([], { policy, policyUpdatedAt: 'bad' }), 'policy'), false);
+	assert.equal(sanitizeMetadata([], { policy: { ...policy, threshold: 100 }, policyUpdatedAt: now }).policy.threshold, 100);
 });
