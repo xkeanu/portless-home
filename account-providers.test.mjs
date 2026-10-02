@@ -26,6 +26,10 @@ async function fixture(t, deps = {}) {
 	return { home, config, dependencies, providers: createProviders(config, dependencies) };
 }
 const json = (path, data) => writeFile(path, JSON.stringify(data));
+async function assertPrivateMode(path) {
+	// Windows inherits profile ACLs; chmod does not distinguish POSIX owner bits.
+	if (process.platform !== 'win32') assert.equal((await stat(path)).mode & 0o777, 0o600);
+}
 
 test('Claude captures only account login and identity, and releases native locks', async (t) => {
 	const f = await fixture(t);
@@ -48,8 +52,8 @@ test('Claude activation preserves native settings and shared OAuth fields with p
 	assert.equal(native.claudeAiOauth.accessToken, 'fixture-access-bob');
 	assert.deepEqual(native.mcpOAuth, { keep: true });
 	assert.deepEqual(JSON.parse(await readFile(f.config.claudeConfig, 'utf8')).preferences, { theme: 'dark' });
-	assert.equal((await stat(join(f.config.claudeDir, '.credentials.json'))).mode & 0o777, 0o600);
-	assert.equal((await stat(f.config.claudeConfig)).mode & 0o777, 0o600);
+	await assertPrivateMode(join(f.config.claudeDir, '.credentials.json'));
+	await assertPrivateMode(f.config.claudeConfig);
 	assert.ok(!(await readdir(f.home)).some((name) => name.endsWith('.lock') || name.endsWith('.tmp')));
 });
 
@@ -166,7 +170,7 @@ test('Codex captures and activates supported file credentials atomically', async
 	assert.deepEqual((await f.providers.codex.capture()).payload, codexPayload());
 	await f.providers.codex.activate(codexPayload('bob'));
 	assert.deepEqual(JSON.parse(await readFile(join(f.config.codexHome, 'auth.json'), 'utf8')), codexPayload('bob').auth);
-	assert.equal((await stat(join(f.config.codexHome, 'auth.json'))).mode & 0o777, 0o600);
+	await assertPrivateMode(join(f.config.codexHome, 'auth.json'));
 });
 
 test('Codex rejects encrypted, ephemeral and ambiguous profile storage without using stale auth files', async (t) => {
@@ -229,7 +233,7 @@ test('Codex retains rotated tokens even when quota RPC subsequently fails', asyn
 	assert.equal(checkpoint.auth.tokens.refresh_token, 'fixture-renewed-after-failure');
 });
 
-test('Codex native protocol handshake performs account reads without any agent turn', async (t) => {
+test('Codex native protocol handshake performs account reads without any agent turn', { skip: process.platform === 'win32' ? 'The disposable executable fixture uses a POSIX shebang.' : false }, async (t) => {
 	const f = await fixture(t, { env: { PATH: process.env.PATH } });
 	const command = join(f.home, 'codex-fixture');
 	const checkpointPath = join(f.home, 'checkpoint.json'), pidPath = join(f.home, 'child-pid');
