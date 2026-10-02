@@ -10,12 +10,19 @@ class PortlessHome < Formula
     system "npm", "ci", "--ignore-scripts"
     system "npm", "run", "build"
     libexec.install "server.mjs", "render.mjs", "i18n.mjs", "peers.mjs", "menubar.mjs", "live.mjs", "launch.mjs", "external.mjs", "dist"
+    libexec.install "accounts.mjs", "accounts-http.mjs", "accounts-cli.mjs", "account-store.mjs",
+                    "account-providers.mjs", "account-processes.mjs", "account-routing.mjs", "account-sync.mjs"
     pkgshare.install "menubar"
     (bin/"portless-home").write <<~SH
       #!/bin/sh
       exec "#{formula_opt_bin("node")}/node" "#{libexec}/server.mjs" "$@"
     SH
     (bin/"portless-home").chmod 0755
+    (bin/"portless-home-accounts").write <<~SH
+      #!/bin/sh
+      exec "#{formula_opt_bin("node")}/node" "#{libexec}/accounts-cli.mjs" "$@"
+    SH
+    (bin/"portless-home-accounts").chmod 0755
   end
 
   def caveats
@@ -33,6 +40,12 @@ class PortlessHome < Formula
 
       Menu bar (xbar/SwiftBar) plugin, to symlink into your plugin folder:
         #{opt_pkgshare}/menubar/portless-home.15s.sh
+
+      Optional CLI account management:
+        portless-home-accounts enable
+        portless-home-accounts capture claude --label Work
+        portless-home-accounts --help
+      Sign in through the provider CLI before capturing an account.
     EOS
   end
 
@@ -46,11 +59,16 @@ class PortlessHome < Formula
   test do
     (testpath/"routes.json").write "[]"
     port = free_port
-    pid = spawn({ "PORT" => port.to_s, "PORTLESS_ROUTES" => (testpath/"routes.json").to_s },
+    pid = spawn({ "PORT" => port.to_s, "PORTLESS_ROUTES" => (testpath/"routes.json").to_s,
+                  "PORTLESS_ACCOUNTS" => (testpath/"account-config.json").to_s },
                 (bin/"portless-home").to_s)
     sleep 2
     assert_match "dev apps", shell_output("curl -sf http://127.0.0.1:#{port}/")
     assert_predicate libexec/"dist/ui-server.mjs", :exist?
+    assert_match "Account management is off", shell_output("curl -sf http://127.0.0.1:#{port}/accounts")
+    assert_match "capture", shell_output("#{bin}/portless-home-accounts --help")
+    assert_match '"enabled":true', shell_output("PORTLESS_ACCOUNTS=#{testpath}/account-config.json #{bin}/portless-home-accounts enable")
+    assert_predicate testpath/"account-config.json", :exist?
   ensure
     Process.kill("TERM", pid) if pid
   end

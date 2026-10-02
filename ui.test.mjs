@@ -53,6 +53,21 @@ async function mount(changes = {}, options = {}) {
 	return { dom, window, document: window.document, requests, alerts, streams, timers, errors, close: () => dom.window.close() };
 }
 
+test('directory exposes local account management only when explicitly enabled', async () => {
+	for (const accountManagementEnabled of [undefined, false, 'true', true]) {
+		const ui = await mount({ accountManagementEnabled, t: strings('de') });
+		try {
+			const link = ui.document.querySelector('a[href="/accounts"]');
+			assert.equal(link !== null, accountManagementEnabled === true);
+			if (link) {
+				assert.equal(link.textContent, 'CLI accounts');
+				assert.equal(link.getAttribute('lang'), 'en');
+			}
+			assert.deepEqual(ui.errors, []);
+		} finally { ui.close(); }
+	}
+});
+
 test('SSR escapes user data and hydrates without replacing the local controls', async () => {
 	const model = {
 		routes: [route('one.localhost', { label: '<img src=x onerror=evil()>' }), route('two.localhost', { tailscaleUrl: 'https://example.ts.net:8443' })],

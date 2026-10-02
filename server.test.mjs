@@ -14,7 +14,7 @@ const documentOf = (html) => new JSDOM(html).window.document;
 // Missing fixture files must never fall back to the developer's registry or peers.
 beforeEach((t) => {
 	const dir = mkdtempSync(join(tmpdir(), 'portless-home-config-'));
-	const keys = ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS', 'PORTLESS_APPS', 'PORTLESS_EXTERNAL_APPS'];
+	const keys = ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS', 'PORTLESS_APPS', 'PORTLESS_EXTERNAL_APPS', 'PORTLESS_ACCOUNTS'];
 	const previous = new Map(keys.map((key) => [key, process.env[key]]));
 	for (const key of keys) process.env[key] = join(dir, key + '.json');
 	t.after(() => {

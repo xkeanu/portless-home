@@ -117,6 +117,7 @@ export const smokeArchive = async (archive) => {
 			PORTLESS_PEERS: peers,
 			PORTLESS_APPS: apps,
 			PORTLESS_EXTERNAL_APPS: external,
+			PORTLESS_ACCOUNTS: join(temp, 'account-config.json'),
 		});
 		try {
 			const page = await waitForServer(server.port, server.child, server.stderr);
@@ -125,6 +126,12 @@ export const smokeArchive = async (archive) => {
 			assert.ok(page.body.includes(externalLabel), 'configured external app label was missing');
 			assert.ok(page.body.includes(`href="${externalUrl}"`), 'configured external app link was missing');
 			assert.match(page.body, /(?:src|href)="\/assets\/ui\.(?:js|css)"/);
+			const accounts = await get(server.port, '/accounts');
+			assert.equal(accounts.status, 200);
+			assert.match(accounts.body, /Account management is off/);
+			const cli = spawnSync(process.execPath, [join(app, 'accounts-cli.mjs'), '--help'], { encoding: 'utf8', env: { ...process.env, PORTLESS_ACCOUNTS: join(temp, 'account-config.json') } });
+			assert.equal(cli.status, 0, cli.stderr);
+			assert.match(cli.stdout, /capture/);
 			for (const path of ['/api/routes', '/api/menubar']) {
 				const result = await get(server.port, path);
 				assert.equal(result.status, 200);

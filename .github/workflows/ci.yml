@@ -35,6 +35,14 @@ jobs:
           node --check live.mjs
           node --check launch.mjs
           node --check external.mjs
+          node --check accounts.mjs
+          node --check accounts-http.mjs
+          node --check accounts-cli.mjs
+          node --check account-store.mjs
+          node --check account-providers.mjs
+          node --check account-processes.mjs
+          node --check account-routing.mjs
+          node --check account-sync.mjs
           node --check dist/ui-server.mjs
           bash -n install.sh
           bash -n uninstall.sh
@@ -55,11 +63,15 @@ jobs:
           mkdir -p ~/.portless
           printf '[{"hostname":"demo.localhost","pid":%d,"tailscaleUrl":"https://mac.tailnet.ts.net:8443"},{"hostname":"dead.localhost","pid":4194305}]' $$ > ~/.portless/routes.json
           printf '{"apps":[{"label":"External CI fixture","url":"https://external-ci.example.ts.net:8443/path"}]}\n' > "$RUNNER_TEMP/portless-home-external-apps.json"
-          PORTLESS_EXTERNAL_APPS="$RUNNER_TEMP/portless-home-external-apps.json" node server.mjs &
+          PORTLESS_ACCOUNTS="$RUNNER_TEMP/portless-home-accounts/config.json" node accounts-cli.mjs enable
+          PORTLESS_ACCOUNT_HOME="$RUNNER_TEMP/portless-home-provider-home" PORTLESS_ACCOUNTS="$RUNNER_TEMP/portless-home-accounts/config.json" PORTLESS_EXTERNAL_APPS="$RUNNER_TEMP/portless-home-external-apps.json" node server.mjs &
           sleep 1
           page=$(curl -sf http://127.0.0.1:5995)
           echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
           echo "$page" | grep -Fq 'href="https://external-ci.example.ts.net:8443/path"' || { echo "missing external app link"; exit 1; }
+          echo "$page" | grep -Fq 'href="/accounts"' || { echo "missing local account management link"; exit 1; }
+          curl -sf http://127.0.0.1:5995/accounts | grep -q 'CLI accounts'
+          curl -sf http://127.0.0.1:5995/api/accounts | node --input-type=module -e 'import { readFileSync } from "node:fs"; const data = JSON.parse(readFileSync(0, "utf8")); if (data.enabled !== true || !Array.isArray(data.accounts)) process.exit(1);'
           if echo "$page" | grep -q 'dead'; then echo "dead-pid app not filtered"; exit 1; fi
           node scripts/package.mjs v0.0.0-ci --output .release
       - uses: actions/setup-node@v4
@@ -101,12 +113,14 @@ jobs:
           if ((Get-ScheduledTask portless-home).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
           (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/api/menubar).Content
           $installDir = "$env:USERPROFILE\.portless-home"
-          foreach ($file in 'external.mjs', 'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css') {
+          foreach ($file in 'external.mjs', 'accounts.mjs', 'accounts-http.mjs', 'accounts-cli.mjs', 'account-store.mjs', 'account-providers.mjs', 'account-processes.mjs', 'account-routing.mjs', 'account-sync.mjs', 'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css') {
             if (-not (Test-Path "$installDir\$file")) { throw "installed asset missing: $file" }
           }
           $settings = Get-Content "$installDir\service.env"
           if ($settings -notcontains "PORTLESS_APPS=$installDir\apps.json") { throw 'registry path missing from service.env' }
           if ($settings -notcontains "PORTLESS_EXTERNAL_APPS=$installDir\external-apps.json") { throw 'external app config path missing from service.env' }
+          if ($settings -notcontains "PORTLESS_ACCOUNTS=$installDir\accounts\config.json") { throw 'account config path missing from service.env' }
+          if ($settings -notcontains "PORTLESS_ACCOUNT_HOME=$env:USERPROFILE") { throw 'native account home missing from service.env' }
           $registry = @{ enabled = $true; apps = @(@{ hostname = 'fixture.localhost'; cwd = $installDir; command = 'node --version' }) } | ConvertTo-Json -Depth 3
           [IO.File]::WriteAllText("$installDir\apps.json", $registry)
           $external = @{ apps = @(@{ label = 'External CI fixture'; url = 'https://external-ci.example.ts.net:8443/path' }) } | ConvertTo-Json -Depth 3

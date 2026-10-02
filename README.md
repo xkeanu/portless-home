@@ -188,6 +188,129 @@ requests these URLs or checks availability, so entries have no health dots or
 app controls. They are absent from peer snapshots and menu bar clients. This
 configuration is separate from the local launcher below.
 
+## Optional CLI account manager
+
+From the installed directory, enable account management and save the login
+already present in a provider CLI:
+
+```sh
+node accounts-cli.mjs enable
+node accounts-cli.mjs capture claude --label Personal
+node accounts-cli.mjs capture codex --label Work
+node accounts-cli.mjs refresh
+```
+
+Homebrew installs the same CLI as `portless-home-accounts`; for example,
+run `portless-home-accounts enable` and `portless-home-accounts capture claude`.
+
+Open `http://127.0.0.1:5995/accounts` to see saved accounts, usage and routing
+preferences. To save another account, sign in normally through the provider
+CLI, then choose **Save current login**. Use **Switch account** after finishing
+work and stopping that provider's CLI sessions; start a new CLI session yourself
+after the switch. The manager checks for running clients again immediately
+before applying it. It cannot prove an interactive session is idle, change a
+running session's cached login, or restart clients. Claude Desktop, Claude Code
+Desktop, Codex app and ChatGPT app logins are outside this feature.
+
+**Forget saved login** deletes that account's saved backup on this device and
+clears its queued switch and use-first preference. It leaves the current CLI
+signed in and keeps metadata held by other devices. The CLI supports
+`remove ACCOUNT_ID --dry-run` to preview this action and
+`remove ACCOUNT_ID --yes` to confirm it; get account IDs with `status`.
+Remote-only accounts have no local backup or editable settings.
+
+For another Claude account, use `/login` without first running `/logout`.
+[claude-swap's current guidance](https://github.com/realiti4/claude-swap#add-more-accounts)
+reports that `/logout` may revoke the departing account's saved refresh token.
+A revoked login needs a fresh provider sign-in and capture; saving it locally
+does not keep it valid after revocation.
+
+Claude Code subscription logins use its macOS Keychain or credential file.
+Codex ChatGPT subscription logins support file storage and direct macOS Keychain
+storage with `features.secret_auth_storage=false`. Encrypted/ephemeral Codex
+stores, ambiguous profile storage and environment/API-key logins are rejected
+with an explicit error. The manager does not change the provider's storage
+setting. Custom locations can be set under `providers` in the account config:
+`claudeDir`, `claudeConfig`, `codexHome`, and `codexCommand`. The server service
+may need an absolute `codexCommand` if its `PATH` differs from your terminal.
+`PORTLESS_ACCOUNT_HOME` supplies the default provider home; the Windows installer
+sets it to your actual profile because scheduled tasks can use another home.
+
+Configuration defaults to `~/.portless-home/accounts/config.json`;
+`PORTLESS_ACCOUNTS` overrides it. Credentials are stored in an authenticated
+AES-GCM vault beside the config, with a local key file. On macOS/Linux, the
+account directory and files must belong to you and have modes 700 and 600.
+On Windows, restrict their inherited ACLs to your account. The key stays with
+the vault: encryption protects accidental disclosure of its contents, not
+another program running as you. Keep this directory out of cloud file sync.
+If an operation crashes, a vault lock may remain; verify the process has stopped
+before removing that lock. Disabling the module retains saved accounts.
+
+The page and management API accept direct localhost requests only. Browser
+changes also require the same Origin and JSON content type. This boundary does
+not authenticate other programs running on your machine. Account data is absent
+from the app directory's peer snapshots and menu bar output.
+
+Routing uses measured short, weekly and model-specific windows; expired or
+unknown observations cannot supply quota. Plan names rank subscription
+preferences without inventing token allowances. **Priority, tier, then quota**
+uses that order and keeps the current account when the headroom improvement is
+less than ten percentage points at equal priority. **Soonest weekly reset**
+chooses the earliest viable reset. Hard exhaustion always blocks automatic
+selection. Reserves and the used-quota threshold are soft: when every viable
+account is above them, only an explicit **Use first** account permits fallback,
+with a warning. Excluding an account disables automatic routing; manual switching
+still works. Active logins never have their tokens renewed by usage checks;
+renew them with their CLI, then check usage again. Inactive accounts can renew,
+and new tokens are saved before continuing the usage read.
+
+For reserves that vary by weekday, use the local JSON API to set
+`reserveSchedule`, an array of `{ days, start, end, reservePercent }`. Days are
+0 (Sunday) through 6; times are `HH:MM` in UTC. Overnight schedules continue
+into the next day. An example reserves half the allowance Friday evening:
+
+```sh
+curl http://127.0.0.1:5995/api/accounts/account \
+  -H 'Origin: http://127.0.0.1:5995' -H 'Content-Type: application/json' \
+  --data '{"id":"YOUR_SAVED_ACCOUNT_ID","reserveSchedule":[{"days":[5],"start":"18:00","end":"23:00","reservePercent":50}]}'
+```
+
+The server never polls account usage. **Automatically prepare switches** queues
+suggestions when you check usage, for you to apply after stopping sessions.
+Usage checks run at most three provider operations at a time.
+For continuous monitoring, explicitly run `node accounts-cli.mjs auto --interval 60`; it
+checks at a bounded interval and applies a suggested login only when no relevant
+CLI process is running. It never kills, restarts, migrates or retries user work.
+`auto --once` runs one cycle. See `node accounts-cli.mjs --help` for commands.
+Account management also works through this CLI without Portless or Tailscale.
+
+### Metadata between devices
+
+Each device signs in separately. Pairing shares only labels, subscription/usage
+metadata and routing preferences. It does not copy credentials or authorize a
+remote login switch. Enable the module on each device and add a peer to the
+private config using that peer's `snapshotToken`:
+
+```json
+{
+  "enabled": true,
+  "snapshotToken": "THIS_DEVICES_RANDOM_PAIRING_TOKEN",
+  "peers": [{
+    "url": "https://other-device.example.ts.net/api/accounts/metadata",
+    "token": "OTHER_DEVICES_RANDOM_PAIRING_TOKEN"
+  }]
+}
+```
+
+Keep the generated token and `providers` settings when editing. Use an explicit
+HTTPS endpoint reachable from this device; HTTP is accepted only for loopback
+fixtures. Redirects, unauthenticated responses, oversized bodies and stalled
+peers are rejected. Your existing local HTTPS sharing setup can expose the
+metadata endpoint: its bearer token gates metadata reads, while management
+remains localhost-only. Run `node accounts-cli.mjs sync` or **Sync metadata**.
+Newer timestamped preferences and observations win; a remote-only account stays
+unavailable until you sign in and capture the same identity locally.
+
 ## Start registered apps locally
 
 To keep stopped apps on the page, create `~/.portless-home/apps.json`
