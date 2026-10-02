@@ -1,5 +1,6 @@
 <script>
 	import { onMount, tick } from 'svelte';
+	import Accounts from './Accounts.svelte';
 
 	let { model } = $props();
 	let routes = $derived(model.routes);
@@ -107,6 +108,7 @@
 	}
 
 	onMount(() => {
+		if (model.view === 'accounts') return;
 		let fallbackTimer;
 		let startingTimer;
 		let stream;
@@ -131,6 +133,7 @@
 	});
 
 	function visibilityChange() {
+		if (model.view === 'accounts') return;
 		if (document.visibilityState === 'visible') refresh();
 	}
 </script>
@@ -199,6 +202,9 @@
 	{/if}
 {/snippet}
 
+{#if model.view === 'accounts'}
+	<Accounts {model} />
+{:else}
 <main>
 	<h1>{t.title}</h1>
 	{#if !model.tailnetUp}
@@ -225,6 +231,7 @@
 		{@render externalApps()}
 	{/if}
 </main>
+{/if}
 
 <style>
 	:global(body){font-family:ui-sans-serif,system-ui;background:#101014;color:#e6e6ea;margin:0;display:flex;justify-content:center;padding:48px 16px}
