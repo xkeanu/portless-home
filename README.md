@@ -209,6 +209,12 @@ before applying it. It cannot prove an interactive session is idle, change a
 running session's cached login, or restart clients. Claude Desktop, Claude Code
 Desktop, Codex app and ChatGPT app logins are outside this feature.
 
+For another Claude account, use `/login` without first running `/logout`.
+[claude-swap's current guidance](https://github.com/realiti4/claude-swap#add-more-accounts)
+reports that `/logout` may revoke the departing account's saved refresh token.
+A revoked login needs a fresh provider sign-in and capture; saving it locally
+does not keep it valid after revocation.
+
 Claude Code subscription logins use its macOS Keychain or credential file.
 Codex ChatGPT subscription logins support file storage and direct macOS Keychain
 storage with `features.secret_auth_storage=false`. Encrypted/ephemeral Codex

@@ -206,6 +206,7 @@
 		<section class="capture" aria-labelledby="capture-heading">
 			<h2 id="capture-heading">Save current login</h2>
 			<p>Sign in with the provider's CLI first. This saves the login already present on this device.</p>
+			<p class="field-note">For another Claude account, use /login without /logout first. Logout may revoke the login you saved earlier.</p>
 			<form onsubmit={capture}>
 				<div class="fields">
 					<label>Provider
