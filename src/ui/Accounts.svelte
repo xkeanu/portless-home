@@ -127,6 +127,19 @@
 		{#if providers.some((provider) => data.busy?.[provider.id])}
 			<p class="busy-note" role="status">{providers.filter((provider) => data.busy?.[provider.id]).map((provider) => provider.label).join(' and ')} is running. Finish your work and close those CLI sessions, then reload accounts to enable switching.</p>
 		{/if}
+		{#if data.recommendations}
+			<section aria-labelledby="recommendations-heading">
+				<h2 id="recommendations-heading">Next account</h2>
+				{#each providers as provider (provider.id)}
+					{@const choice = data.recommendations[provider.id]}
+					{@const account = rows.find((row) => row.id === choice?.accountId)}
+					{#if choice}
+						<p><strong>{provider.label}{account ? ` · ${accountLabel(account)}` : ''}</strong><br />{choice.reason}</p>
+						{#each choice.warnings ?? [] as warning (warning)}<p class="warning" role="status">{warning}</p>{/each}
+					{/if}
+				{/each}
+			</section>
+		{/if}
 		<section aria-labelledby="saved-heading">
 			<div class="section-heading">
 				<h2 id="saved-heading">Saved accounts <span>{rows.length}</span></h2>
@@ -155,6 +168,7 @@
 								</dl>
 							{/if}
 							<p class="usage-status">{usageLabel(account.usageStatus)}{account.observedAt ? ` · ${date(account.observedAt)}` : ''}</p>
+							{#if account.error}<p class="error">{account.error}</p>{/if}
 							<div class="account-actions">
 								<button type="button" data-switch={account.id} disabled={!!working || account.active || !account.availableLocally || data.busy?.[account.provider]} onclick={() => choose(account)}>{account.active ? 'Current account' : 'Switch account'}</button>
 								<span>{!account.availableLocally ? 'Use the provider CLI to sign in, then save its current login below.' : 'Login stays on this device.'}</span>
@@ -177,7 +191,7 @@
 										<label>Priority<input name="priority" type="number" min="-100" max="100" step="1" value={account.priority ?? 0} disabled={!!working} /></label>
 										<label>Reserve %<input name="reservePercent" type="number" min="0" max="99" step="1" value={account.reservePercent ?? 0} disabled={!!working} /></label>
 									</div>
-									<p class="field-note">Priority breaks ties. Reserve keeps part of this account's allowance out of automatic routing.</p>
+									<p class="field-note">Higher priority wins before subscription preference and quota. Reserve marks allowance you want to keep for other work.</p>
 									<label class="check"><input name="disabled" type="checkbox" checked={account.disabled} disabled={!!working} /> Exclude from automatic routing</label>
 									<button type="submit" disabled={!!working}>{working === `account:${account.id}` ? 'Saving…' : 'Save settings'}</button>
 								</form>
@@ -217,7 +231,7 @@
 				<div class="fields">
 					<label>Strategy
 						<select name="strategy" value={data.policy?.strategy ?? 'best'} disabled={!!working}>
-							<option value="best">Most remaining quota</option>
+								<option value="best">Priority, tier, then quota</option>
 								<option value="consume-first">Soonest weekly reset</option>
 						</select>
 					</label>
@@ -225,7 +239,7 @@
 					<label class="wide">Use first
 						<select name="useFirst" value={data.policy?.useFirst ?? ''} disabled={!!working}>
 							<option value="">Follow strategy</option>
-								{#each rows as account (account.id)}
+								{#each rows.filter((row) => row.availableLocally && !row.disabled) as account (account.id)}
 									<option value={account.id}>{providerLabel(account.provider)} · {accountLabel(account)}</option>
 								{/each}
 						</select>
@@ -240,7 +254,8 @@
 	{/if}
 	<section class="sync" aria-labelledby="sync-heading">
 		<h2 id="sync-heading">Between devices</h2>
-		<p>{data.sync?.configured ? `Metadata sync is configured. ${data.sync.count ?? 0} account records are available.` : 'Metadata sync is not configured on this device.'}</p>
+		<p>{data.sync?.configured ? `Metadata sync is configured. ${data.sync.count ?? 0} devices have responded.` : 'Metadata sync is not configured on this device.'}</p>
+		{#if data.sync?.configured}<button type="button" disabled={!!working} onclick={() => request('sync', '/api/accounts/sync', {}, 'Account metadata synced.')}>{working === 'sync' ? 'Syncing…' : 'Sync metadata'}</button>{/if}
 		<p>Sync shares account labels, usage and routing preferences. Log in separately on each device to use an account there.</p>
 	</section>
 </main>
@@ -313,6 +328,7 @@
 	.pending p:last-child{margin:0}
 	.error{color:var(--error);margin:0 0 12px}
 	.notice{color:var(--success);margin:0 0 12px}
+	.warning{color:var(--accent)}
 	.sync{padding-top:24px;border-top:1px solid var(--border)}
 	.sync p:last-child{margin-bottom:0}
 	@media(max-width:540px){header,.account-heading{flex-direction:column;gap:12px}.account-heading .state{text-align:left;max-width:none}.fields{grid-template-columns:1fr}.fields .wide{grid-column:auto}.account-actions{align-items:flex-start;flex-direction:column;gap:8px}.account{padding:16px}.section-heading{align-items:flex-start;gap:12px}.section-heading button{font-size:13px;padding-inline:10px}.usage-windows{gap:12px}}

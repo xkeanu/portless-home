@@ -13,6 +13,8 @@ import { strings } from './i18n.mjs';
 import { events, readText, stamp } from './live.mjs';
 import { launcher, localRequest, readRegistry } from './launch.mjs';
 import { readExternalApps } from './external.mjs';
+import { createAccountManager } from './accounts.mjs';
+import { accountHttp } from './accounts-http.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
@@ -20,6 +22,9 @@ const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 
 const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.portless-home', 'peers.json');
 const APPS = process.env.PORTLESS_APPS || join(homedir(), '.portless-home', 'apps.json');
 const EXTERNAL_APPS = process.env.PORTLESS_EXTERNAL_APPS || join(homedir(), '.portless-home', 'external-apps.json');
+const ACCOUNTS = process.env.PORTLESS_ACCOUNTS || join(homedir(), '.portless-home', 'accounts', 'config.json');
+const accounts = createAccountManager({ configPath: ACCOUNTS });
+const accountRequest = accountHttp(accounts, (model) => page({ view: 'accounts', accounts: model, t: { ...strings('en'), title: 'AI accounts' } }));
 const launches = launcher();
 // Keep outside portless's 4000-4999 app port range.
 const PORT = Number(process.env.PORT) || 5995;
@@ -213,6 +218,7 @@ const assets = new Map([
 ]);
 
 export const handler = async (req, res) => {
+	if (await accountRequest(req, res)) return;
 	if (req.url?.startsWith('/assets/')) {
 		const asset = assets.get(req.url);
 		if (!asset) return fail(res, 404);
@@ -249,6 +255,9 @@ export const handler = async (req, res) => {
 		external: readExternalApps(EXTERNAL_APPS),
 		peers, tailnetUp: hasTailnetAddr(networkInterfaces()), t, stamp: stamp(text),
 	};
+	if (localRequest(req)) {
+		try { model.accountManagementEnabled = accounts.settings().enabled === true; } catch {}
+	}
 	res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', Vary: 'Accept-Language', 'Cache-Control': 'no-store' });
 	res.end(page(model));
 };

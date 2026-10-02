@@ -41,6 +41,9 @@ reason in the description.
    nothing. The opt-in local launcher tracks only the child processes it
    starts, to reject duplicate launches and report exits. Child events
    update this state; there is no process polling or idle timer.
+   The optional account module also runs only on requests. Its separate
+   `accounts-cli.mjs auto` command explicitly opts into bounded usage/process
+   monitoring; it must never become a default server timer or interrupt work.
 5. **Escape everything user-influenced.** Svelte escapes template values by
    default. Do not add raw HTML rendering, and keep the server-to-client JSON
    model safe for a script context.

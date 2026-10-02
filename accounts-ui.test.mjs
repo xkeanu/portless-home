@@ -65,6 +65,20 @@ test('account page escapes metadata, isolates directory events and explains loca
 	} finally { ui.close(); }
 });
 
+test('routing recommendations expose soft fallback warnings and usage failures as plain text', async () => {
+	const ui = await mount({
+		accounts: [account('first', { error: '<failed usage>', usageStatus: 'unavailable' }), account('remote', { availableLocally: false })],
+		recommendations: { claude: { accountId: 'first', reason: 'Using the explicitly selected fallback account.', warnings: ['Reserve threshold reached.'] }, codex: { accountId: null, reason: 'No usable account.', warnings: [] } },
+	});
+	try {
+		assert.match(ui.document.querySelector('[aria-labelledby="recommendations-heading"]').textContent, /fallback account/);
+		assert.equal(ui.document.querySelector('.warning').textContent, 'Reserve threshold reached.');
+		assert.equal(ui.document.querySelector('.account .error').textContent, '<failed usage>');
+		assert.equal(ui.document.querySelector('select[name="useFirst"] option[value="remote"]'), null);
+		assert.deepEqual(ui.errors, []);
+	} finally { ui.close(); }
+});
+
 test('capture uses a provider and label only, prevents duplicate requests, and updates the page', async () => {
 	let resolve;
 	const pending = new Promise((done) => { resolve = done; });
