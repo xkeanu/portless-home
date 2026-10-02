@@ -55,6 +55,9 @@ test('account page escapes metadata, isolates directory events and explains loca
 		assert.equal(ui.document.querySelector('h3').textContent, '<img src=x onerror=evil()>');
 		assert.equal(ui.document.querySelector('img'), null);
 		assert.equal(ui.document.querySelector('[data-switch]').disabled, true);
+		assert.equal(ui.document.querySelector('.settings-form'), null);
+		assert.equal(ui.document.querySelector('details'), null);
+		assert.equal(ui.document.querySelector('[data-remove]'), null);
 		assert.match(ui.document.querySelector('.state').textContent, /Sign in on this device/);
 		assert.match(ui.document.querySelector('.scope-note').textContent, /Desktop app logins are separate/);
 		assert.match(ui.document.querySelector('.sync').textContent, /Log in separately on each device/);
@@ -146,6 +149,71 @@ test('live CLIs block provider switches while another idle provider remains avai
 		assert.match(ui.document.querySelector('.busy-note').textContent, /Claude Code CLI is running/);
 		assert.match(ui.document.querySelector('.pending').textContent, /Weekly allowance resets soon/);
 		assert.deepEqual(ui.requests, []);
+	} finally { ui.close(); }
+});
+
+test('remote-only accounts retain sign-in guidance without local settings or removal controls', async () => {
+	const ui = await mount({ accounts: [account('local'), account('remote', { availableLocally: false })] });
+	try {
+		const local = ui.document.querySelector('[data-account="local"]');
+		const remote = ui.document.querySelector('[data-account="remote"]');
+		assert.ok(local.querySelector('.settings-form'));
+		assert.ok(local.querySelector('[data-remove="local"]'));
+		assert.equal(remote.querySelector('details'), null);
+		assert.equal(remote.querySelector('form'), null);
+		assert.equal(remote.querySelector('[data-remove]'), null);
+		assert.equal(remote.querySelector('[data-switch="remote"]').disabled, true);
+		assert.match(remote.textContent, /Use the provider CLI to sign in/);
+		assert.deepEqual(ui.requests, []);
+		assert.deepEqual(ui.errors, []);
+	} finally { ui.close(); }
+});
+
+test('forgetting an active saved login requires confirmation, supports retry, and removes only local controls', async () => {
+	let resolve;
+	const rows = [account('first', { active: true }), account('second')];
+	const ui = await mount({ accounts: rows, busy: { claude: true, codex: false } }, () => new Promise((done) => { resolve = done; }));
+	try {
+		const forget = ui.document.querySelector('[data-remove="first"]');
+		assert.equal(forget.disabled, false);
+		forget.click();
+		await settle();
+		let form = ui.document.querySelector('.remove-confirm');
+		assert.match(form.getAttribute('aria-label'), /first/);
+		assert.match(form.textContent, /this device's saved login backup/);
+		assert.match(form.textContent, /Your CLI stays signed in/);
+		assert.match(form.textContent, /metadata on other devices remains/);
+		assert.deepEqual(ui.requests, []);
+		form.querySelector('[type="button"]').click();
+		await settle();
+		assert.equal(ui.document.querySelector('.remove-confirm'), null);
+		assert.deepEqual(ui.requests, []);
+		forget.click();
+		await settle();
+		form = ui.document.querySelector('.remove-confirm');
+		form.requestSubmit();
+		await settle();
+		assert.deepEqual(ui.requests, [{ path: '/api/accounts/account', method: 'DELETE', body: { id: 'first' } }]);
+		assert.equal(form.querySelector('[type="submit"]').disabled, true);
+		assert.equal(form.querySelector('[type="button"]').disabled, true);
+		form.dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+		assert.equal(ui.requests.length, 1);
+		resolve(response({ error: 'Could not save the account store. Try again.' }, false));
+		await settle();
+		assert.match(ui.document.querySelector('[role="alert"]').textContent, /Try again/);
+		assert.equal(form.querySelector('[type="submit"]').disabled, false);
+		assert.ok(ui.document.querySelector('[data-account="first"] .settings-form'));
+		form.requestSubmit();
+		await settle();
+		resolve(response({ ...fixture(), accounts: [account('first', { availableLocally: false }), account('second')] }));
+		await settle();
+		assert.equal(ui.requests.length, 2);
+		assert.equal(ui.document.querySelector('.remove-confirm'), null);
+		assert.equal(ui.document.querySelector('[data-account="first"] .settings-form'), null);
+		assert.equal(ui.document.querySelector('[data-remove="first"]'), null);
+		assert.ok(ui.document.querySelector('[data-remove="second"]'));
+		assert.match(ui.document.querySelector('.notice').textContent, /Saved login forgotten on this device/);
+		assert.deepEqual(ui.errors, []);
 	} finally { ui.close(); }
 });
 

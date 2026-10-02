@@ -7,6 +7,7 @@
 	let captureProvider = $state('');
 	let captureLabel = $state('');
 	let switchId = $state('');
+	let removeId = $state('');
 	let stopped = $state(false);
 	const data = $derived(snapshot ?? model.accounts);
 	const rows = $derived(data.accounts ?? []);
@@ -56,9 +57,23 @@
 
 	function choose(account) {
 		switchId = account.id;
+		removeId = '';
 		stopped = false;
 		error = '';
 		notice = '';
+	}
+
+	function chooseRemoval(account) {
+		removeId = account.id;
+		switchId = '';
+		stopped = false;
+		error = '';
+		notice = '';
+	}
+
+	async function removeAccount(event, account) {
+		event.preventDefault();
+		if (await request(`remove:${account.id}`, '/api/accounts/account', { id: account.id }, 'Saved login forgotten on this device. Your CLI stays signed in.', 'DELETE')) removeId = '';
 	}
 
 	async function switchAccount(event) {
@@ -171,6 +186,7 @@
 							{#if account.error}<p class="error">{account.error}</p>{/if}
 							<div class="account-actions">
 								<button type="button" data-switch={account.id} disabled={!!working || account.active || !account.availableLocally || data.busy?.[account.provider]} onclick={() => choose(account)}>{account.active ? 'Current account' : 'Switch account'}</button>
+								{#if account.availableLocally}<button type="button" data-remove={account.id} disabled={!!working} onclick={() => chooseRemoval(account)}>Forget saved login</button>{/if}
 								<span>{!account.availableLocally ? 'Use the provider CLI to sign in, then save its current login below.' : 'Login stays on this device.'}</span>
 							</div>
 							{#if switchId === account.id}
@@ -183,19 +199,31 @@
 									</div>
 								</form>
 							{/if}
-							<details>
-								<summary>Account settings</summary>
-								<form class="settings-form" onsubmit={(event) => saveAccount(event, account)} aria-label={`Settings for ${accountLabel(account)}`}>
-									<div class="fields">
-										<label class="wide">Label<input name="label" value={account.label || ''} maxlength="64" disabled={!!working} /></label>
-										<label>Priority<input name="priority" type="number" min="-100" max="100" step="1" value={account.priority ?? 0} disabled={!!working} /></label>
-										<label>Reserve %<input name="reservePercent" type="number" min="0" max="99" step="1" value={account.reservePercent ?? 0} disabled={!!working} /></label>
-									</div>
-									<p class="field-note">Higher priority wins before subscription preference and quota. Reserve marks allowance you want to keep for other work.</p>
-									<label class="check"><input name="disabled" type="checkbox" checked={account.disabled} disabled={!!working} /> Exclude from automatic routing</label>
-									<button type="submit" disabled={!!working}>{working === `account:${account.id}` ? 'Saving…' : 'Save settings'}</button>
-								</form>
-							</details>
+							{#if account.availableLocally}
+								{#if removeId === account.id}
+									<form class="remove-confirm" onsubmit={(event) => removeAccount(event, account)} aria-label={`Confirm forgetting saved login for ${accountLabel(account)}`}>
+										<p>Forget the saved login for <strong>{accountLabel(account)}</strong>?</p>
+										<p>This deletes this device's saved login backup. Your CLI stays signed in, and metadata on other devices remains.</p>
+										<div class="buttons">
+											<button type="submit" disabled={!!working}>{working === `remove:${account.id}` ? 'Forgetting…' : 'Forget login on this device'}</button>
+											<button type="button" disabled={!!working} onclick={() => { removeId = ''; }}>Cancel</button>
+										</div>
+									</form>
+								{/if}
+								<details>
+									<summary>Account settings</summary>
+									<form class="settings-form" onsubmit={(event) => saveAccount(event, account)} aria-label={`Settings for ${accountLabel(account)}`}>
+										<div class="fields">
+											<label class="wide">Label<input name="label" value={account.label || ''} maxlength="64" disabled={!!working} /></label>
+											<label>Priority<input name="priority" type="number" min="-100" max="100" step="1" value={account.priority ?? 0} disabled={!!working} /></label>
+											<label>Reserve %<input name="reservePercent" type="number" min="0" max="99" step="1" value={account.reservePercent ?? 0} disabled={!!working} /></label>
+										</div>
+										<p class="field-note">Higher priority wins before subscription preference and quota. Reserve marks allowance you want to keep for other work.</p>
+										<label class="check"><input name="disabled" type="checkbox" checked={account.disabled} disabled={!!working} /> Exclude from automatic routing</label>
+										<button type="submit" disabled={!!working}>{working === `account:${account.id}` ? 'Saving…' : 'Save settings'}</button>
+									</form>
+								</details>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -317,8 +345,8 @@
 	summary{color:var(--muted);cursor:pointer;font-size:13px;min-height:24px}
 	summary:hover{color:var(--text)}
 	.settings-form{padding-top:1px}
-	.switch-confirm{margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
-	.switch-confirm p{color:var(--text)}
+	.switch-confirm,.remove-confirm{margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
+	.switch-confirm p,.remove-confirm p{color:var(--text)}
 	.buttons{display:flex;gap:10px;flex-wrap:wrap}
 	.empty{padding:24px 0;border-block:1px solid var(--border)}
 	.empty p{margin:6px 0 0}
