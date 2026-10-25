@@ -72,12 +72,15 @@ export const createAccountManager = ({ configPath, providersFactory, inspectProc
 	};
 	const snapshot = async () => {
 		const config = settings();
-		if (config.enabled !== true) return { enabled: false, accounts: [], providers: [], pending: [], busy: {}, policy: defaultPolicy, sync: { configured: false, count: 0 } };
+		if (config.enabled !== true) return { enabled: false, accounts: [], currentLogins: [], providers: [], pending: [], busy: {}, policy: defaultPolicy, sync: { configured: false, count: 0 } };
 		const state = vault().read();
 		const adapters = await providers(config);
 		const [{ ids, availability }, busy] = await Promise.all([active(adapters), inspectProcesses()]);
 		const rows = await rowsOf(state, ids);
-		return { enabled: true, accounts: rows, providers: availability, pending: state.pending, busy,
+		const currentLogins = Object.values(ids).map(({ id, provider, email, tier }) => ({
+			id, provider, email, tier, saved: state.accounts.some((row) => row.id === id),
+		}));
+		return { enabled: true, accounts: rows, currentLogins, providers: availability, pending: state.pending, busy,
 			policy: { ...defaultPolicy, ...state.policy }, recommendations: await recommendations(rows, state.policy),
 			sync: { configured: Array.isArray(config.peers) && config.peers.length > 0, count: state.remote.length } };
 	};
@@ -93,11 +96,20 @@ export const createAccountManager = ({ configPath, providersFactory, inspectProc
 		if (label) { row.label = label; row.preferencesUpdatedAt = now(); }
 		return row;
 	};
-	const capture = async (provider, label) => {
+	const capture = async (provider, label, expectedId) => {
 		checkProvider(provider);
 		label = text(label, 64, 'label', true);
+		if (expectedId !== undefined && (typeof expectedId !== 'string' || expectedId.length !== provider.length + 25 || !new RegExp(`^${provider}-[a-f0-9]{24}$`).test(expectedId))) {
+			throw new AccountError('input', 'Invalid expected account ID.');
+		}
 		const adapters = await providers(enabled());
-		await vault().update(async (state) => saveCapture(state, provider, await adapters[provider].capture(), label));
+		await vault().update(async (state) => {
+			const current = await adapters[provider].capture();
+			if (expectedId !== undefined && identityOf(provider, current).id !== expectedId) {
+				throw new AccountError('login-changed', 'The CLI login changed. Reload accounts and save the current login again.', 409);
+			}
+			saveCapture(state, provider, current, label);
+		});
 		return snapshot();
 	};
 	const refresh = async ({ syncPeers = true, forceAuto = false } = {}) => {

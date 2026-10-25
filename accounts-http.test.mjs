@@ -95,7 +95,8 @@ test('owner reads serve local accounts/page with no-store and deny remote or for
 test('same-origin JSON mutations reach their intended manager methods', async (t) => {
 	const { port, headers, manager } = await fixture(t);
 	const actions = [
-		['/api/accounts/capture', 'POST', { provider: 'codex', label: 'Personal' }, 'capture', ['codex', 'Personal']],
+		['/api/accounts/capture', 'POST', { provider: 'codex', label: 'Personal' }, 'capture', ['codex', 'Personal', undefined]],
+		['/api/accounts/capture', 'POST', { provider: 'codex', expectedId: 'codex-0123456789abcdef01234567' }, 'capture', ['codex', undefined, 'codex-0123456789abcdef01234567']],
 		['/api/accounts/refresh', 'POST', {}, 'refresh', []],
 		['/api/accounts/switch', 'POST', { id: 'codex-fixture' }, 'switchAccount', ['codex-fixture']],
 		['/api/accounts/account', 'POST', { id: 'codex-fixture', reservePercent: 20 }, 'edit', [{ id: 'codex-fixture', reservePercent: 20 }]],
@@ -122,7 +123,7 @@ test('owner mutations accept the browser origin for a localhost host at default 
 		let status;
 		assert.equal(await handler(req, { writeHead: (code) => { status = code; }, end() {} }), true);
 		assert.equal(status, 200, host);
-		assert.deepEqual(manager.calls, [{ name: 'capture', args: ['codex', undefined] }]);
+		assert.deepEqual(manager.calls, [{ name: 'capture', args: ['codex', undefined, undefined] }]);
 	}
 });
 
@@ -192,6 +193,18 @@ test('errors expose safe known messages and hide unexpected credential details',
 	response = await send(port, { path: '/api/accounts/refresh', method: 'POST', headers, body: {} });
 	assert.equal(response.status, 502);
 	assert.deepEqual(JSON.parse(response.text), { error: 'The provider could not check usage.' });
+});
+
+test('capture forwards an explicit null identity for manager validation and returns login-changed recovery', async (t) => {
+	const { port, headers, manager } = await fixture(t);
+	manager.failures.capture = new AccountError('input', 'Invalid expected account ID.');
+	let response = await send(port, { path: '/api/accounts/capture', method: 'POST', headers, body: { provider: 'codex', expectedId: null } });
+	assert.equal(response.status, 400);
+	assert.deepEqual(manager.calls.at(-1), { name: 'capture', args: ['codex', undefined, null] });
+	manager.failures.capture = new AccountError('login-changed', 'The CLI login changed. Reload accounts and save the current login again.', 409);
+	response = await send(port, { path: '/api/accounts/capture', method: 'POST', headers, body: { provider: 'codex', expectedId: 'codex-0123456789abcdef01234567' } });
+	assert.equal(response.status, 409);
+	assert.match(JSON.parse(response.text).error, /Reload accounts/);
 });
 
 test('unrelated routes fall through, while unknown account actions remain inside the account API', async (t) => {

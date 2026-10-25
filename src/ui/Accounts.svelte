@@ -9,8 +9,11 @@
 	let switchId = $state('');
 	let removeId = $state('');
 	let stopped = $state(false);
+	let detecting = false;
+	let requestVersion = 0;
 	const data = $derived(snapshot ?? model.accounts);
 	const rows = $derived(data.accounts ?? []);
+	const currentLogins = $derived(data.currentLogins ?? []);
 	const providers = $derived(data.providers ?? []);
 	const supported = $derived(providers.filter((provider) => provider.supported));
 	const selected = $derived(rows.find((account) => account.id === switchId));
@@ -21,38 +24,55 @@
 		const parsed = new Date(value);
 		return Number.isNaN(parsed.valueOf()) ? 'Unknown' : `${parsed.toLocaleString('en', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })} UTC`;
 	};
-	const usageLabel = (status) => ({ fresh: 'Usage checked', ok: 'Usage checked', stale: 'Usage is stale', unknown: 'Usage unknown', error: 'Usage check failed', unsupported: 'Usage unavailable' })[status] ?? 'Usage unknown';
+	const usageLabel = (status) => ({ unavailable: 'Usage unavailable', fresh: 'Usage checked', ok: 'Usage checked', stale: 'Usage is stale', unknown: 'Usage unknown', error: 'Usage check failed', unsupported: 'Usage unavailable' })[status] ?? 'Usage unknown';
 	const percent = (value) => Number.isFinite(value) ? `${Math.round(value)}%` : 'Unknown';
 
-	async function request(action, path, body, message, method = 'POST') {
-		if (working) return false;
-		working = action;
-		error = '';
-		notice = '';
+	async function request(action, path, body, message, method = 'POST', { background = false } = {}) {
+		if (working || (background && detecting)) return false;
+		const version = background ? requestVersion : ++requestVersion;
+		const superseded = () => background && (requestVersion !== version || working || switchId || removeId || document.activeElement?.closest('form'));
+		if (background) detecting = true;
+		else {
+			working = action;
+			error = '';
+			notice = '';
+		}
 		try {
 			const response = await fetch(path, {
 				method,
 				...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
 			});
 			const result = await response.json();
+			if (superseded()) return false;
 			if (!response.ok || result.error) {
-				error = result.error || 'The account action failed. Try again.';
+				if (!background) error = result.error || 'The account action failed. Try again.';
 				return false;
 			}
 			snapshot = result.accounts?.accounts ? result.accounts : result;
-			notice = message;
+			if (!background) notice = message;
 			return true;
 		} catch {
-			error = 'Could not reach the account manager. Reload the page and try again.';
+			if (!background) error = 'Could not reach the account manager. Reload the page and try again.';
 			return false;
 		} finally {
-			working = '';
+			if (background) detecting = false;
+			else working = '';
 		}
+	}
+
+	function refreshOnReturn() {
+		if (working || switchId || removeId || document.visibilityState === 'hidden' || document.activeElement?.closest('form')) return;
+		return request('reload', '/api/accounts', undefined, '', 'GET', { background: true });
+	}
+
+	function saveCurrent(login) {
+		return request(`capture:${login.provider}`, '/api/accounts/capture', { provider: login.provider, expectedId: login.id }, 'Current CLI login saved.');
 	}
 
 	async function capture(event) {
 		event.preventDefault();
-		if (await request('capture', '/api/accounts/capture', { provider: captureProvider, label: captureLabel }, 'Current CLI login saved.')) captureLabel = '';
+		const current = currentLogins.find((login) => login.provider === captureProvider);
+		if (await request('capture', '/api/accounts/capture', { provider: captureProvider, label: captureLabel, ...(current ? { expectedId: current.id } : {}) }, 'Current CLI login saved.')) captureLabel = '';
 	}
 
 	function choose(account) {
@@ -109,6 +129,9 @@
 	}
 </script>
 
+<svelte:window onfocus={refreshOnReturn} />
+<svelte:document onvisibilitychange={refreshOnReturn} />
+
 <main class="accounts" lang="en" aria-busy={!!working}>
 	<nav aria-label="Account navigation"><a href="/">Back to apps</a></nav>
 	<header>
@@ -129,110 +152,119 @@
 			<p>Enable the local account manager to save CLI logins on this device.</p>
 		</section>
 	{:else}
-		{#if data.pending?.length}
-			<section class="pending" aria-labelledby="pending-heading">
-				<h2 id="pending-heading">Suggested switches</h2>
-				{#each data.pending as pending (pending.provider)}
-					{@const account = rows.find((row) => row.id === pending.id)}
-					<p><strong>{providerLabel(pending.provider)}{account ? ` · ${accountLabel(account)}` : ''}</strong><br />{pending.reason || 'Finish your active CLI work, then choose this account below.'}</p>
-				{/each}
-				<p>Stop the provider's CLI sessions before switching. Restart the CLI yourself when ready.</p>
-			</section>
-		{/if}
-		{#if providers.some((provider) => data.busy?.[provider.id])}
-			<p class="busy-note" role="status">{providers.filter((provider) => data.busy?.[provider.id]).map((provider) => provider.label).join(' and ')} is running. Finish your work and close those CLI sessions, then reload accounts to enable switching.</p>
-		{/if}
-		{#if data.recommendations}
-			<section aria-labelledby="recommendations-heading">
-				<h2 id="recommendations-heading">Next account</h2>
-				{#each providers as provider (provider.id)}
-					{@const choice = data.recommendations[provider.id]}
-					{@const account = rows.find((row) => row.id === choice?.accountId)}
-					{#if choice}
-						<p><strong>{provider.label}{account ? ` · ${accountLabel(account)}` : ''}</strong><br />{choice.reason}</p>
-						{#each choice.warnings ?? [] as warning (warning)}<p class="warning" role="status">{warning}</p>{/each}
-					{/if}
-				{/each}
-			</section>
-		{/if}
 		<section aria-labelledby="saved-heading">
 			<div class="section-heading">
-				<h2 id="saved-heading">Saved accounts <span>{rows.length}</span></h2>
+				<h2 id="saved-heading">Accounts <span>{rows.filter((account) => account.availableLocally).length} saved here</span></h2>
 				<button type="button" disabled={!!working || !rows.some((account) => account.availableLocally)} onclick={() => request('refresh', '/api/accounts/refresh', {}, 'Usage checked for local accounts.')}>{working === 'refresh' ? 'Checking usage…' : 'Check usage'}</button>
 			</div>
-			{#if rows.length}
-				<ul class="account-list">
-					{#each rows as account (account.id)}
-						<li class="account" data-account={account.id}>
-							<div class="account-heading">
-								<div>
-									<h3>{accountLabel(account)}</h3>
-									<p class="identity">{providerLabel(account.provider)}{account.tier ? ` · ${account.tier}` : ''}{account.email && account.label ? ` · ${account.email}` : ''}</p>
-								</div>
-								<span class={['state', account.active && 'active']}>{account.active ? 'Active login' : !account.availableLocally ? 'Sign in on this device' : account.disabled ? 'Excluded from routing' : 'Saved locally'}</span>
-							</div>
-							{#if account.windows?.length}
-								<dl class="usage-windows">
-									{#each account.windows as window (window.key)}
-										<div>
-											<dt>{window.label}</dt>
-											<dd><strong>{percent(window.usedPercent)}</strong> used</dd>
-											<dd class="reset">Resets {date(window.resetsAt)}</dd>
-										</div>
-									{/each}
-								</dl>
-							{/if}
-							<p class="usage-status">{usageLabel(account.usageStatus)}{account.observedAt ? ` · ${date(account.observedAt)}` : ''}</p>
-							{#if account.error}<p class="error">{account.error}</p>{/if}
-							<div class="account-actions">
-								<button type="button" data-switch={account.id} disabled={!!working || account.active || !account.availableLocally || data.busy?.[account.provider]} onclick={() => choose(account)}>{account.active ? 'Current account' : 'Switch account'}</button>
-								{#if account.availableLocally}<button type="button" data-remove={account.id} disabled={!!working} onclick={() => chooseRemoval(account)}>Forget saved login</button>{/if}
-								<span>{!account.availableLocally ? 'Use the provider CLI to sign in, then save its current login below.' : 'Login stays on this device.'}</span>
-							</div>
-							{#if switchId === account.id}
-								<form class="switch-confirm" onsubmit={switchAccount} aria-label={`Confirm switch to ${accountLabel(account)}`}>
-									<p>Switch the {providerLabel(account.provider)} login to <strong>{accountLabel(account)}</strong>. The manager will refuse while that CLI is running.</p>
-									<label class="check"><input type="checkbox" bind:checked={stopped} required disabled={!!working} /> I have stopped this provider's CLI sessions.</label>
-									<div class="buttons">
-										<button type="submit" class="primary" disabled={!stopped || !!working || data.busy?.[account.provider]}>{working === 'switch' ? 'Switching…' : 'Switch login'}</button>
-										<button type="button" disabled={!!working} onclick={() => { switchId = ''; stopped = false; }}>Cancel</button>
+			{#each providers as provider (provider.id)}
+				{@const current = currentLogins.find((login) => login.provider === provider.id)}
+				{@const providerRows = rows.filter((account) => account.provider === provider.id && !(current && !current.saved && current.id === account.id && !account.availableLocally))}
+				{@const choice = data.recommendations?.[provider.id]}
+				{@const recommended = rows.find((account) => account.id === choice?.accountId)}
+				{@const pending = data.pending?.find((entry) => entry.provider === provider.id)}
+				{@const pendingAccount = rows.find((account) => account.id === pending?.id)}
+				<section class="provider-group" data-provider={provider.id} aria-labelledby={`provider-${provider.id}`}>
+					<div class="provider-heading"><h3 id={`provider-${provider.id}`}>{provider.label}</h3><span>{providerRows.filter((account) => account.availableLocally).length} saved here</span></div>
+					{#if data.busy?.[provider.id]}<p class="busy-note" role="status">{provider.label} is running. Finish your work and close those CLI sessions, then reload accounts to enable switching.</p>{/if}
+					{#if !provider.supported}<p class="provider-unavailable">{provider.error || 'Login detection is unavailable on this device.'}</p>{/if}
+					{#if choice && (providerRows.length || choice.accountId)}
+						<div class="recommendation" data-recommendation={provider.id}>
+							<p><strong>{choice.accountId ? 'Recommended next' : 'No account recommended'}{recommended ? ` · ${accountLabel(recommended)}` : ''}</strong><br />{choice.reason}</p>
+							{#each choice.warnings ?? [] as warning (warning)}<p class="warning" role="status">{warning}</p>{/each}
+						</div>
+					{/if}
+					{#if pending}
+						<div class="pending"><p><strong>Switch waiting{pendingAccount ? ` · ${accountLabel(pendingAccount)}` : ''}</strong><br />{pending.reason || 'Finish your active CLI work, then choose this account below.'}</p><p>Stop the provider's CLI sessions before switching. Restart the CLI yourself when ready.</p></div>
+					{/if}
+					{#if current && !current.saved}
+						<div class="current-login" data-current={current.id}>
+							<div><h4>{current.email || 'Current CLI login'}</h4><p class="identity">{current.tier || provider.label}</p><p class="current-state"><strong>Current CLI login</strong> · Not saved</p></div>
+							<button class="primary" type="button" data-save-current={provider.id} disabled={!!working} onclick={() => saveCurrent(current)}>{working === `capture:${provider.id}` ? 'Saving…' : 'Save account'}</button>
+							<p class="field-note">Save this login on this device to switch back to it later.</p>
+						</div>
+					{/if}
+					<ul class="account-list">
+						{#each providerRows as account (account.id)}
+							<li class="account" data-account={account.id}>
+								<div class="account-heading">
+									<div>
+										<h4>{accountLabel(account)}</h4>
+										<p class="identity">{providerLabel(account.provider)}{account.tier ? ` · ${account.tier}` : ''}{account.email && account.label ? ` · ${account.email}` : ''}</p>
 									</div>
-								</form>
-							{/if}
-							{#if account.availableLocally}
-								{#if removeId === account.id}
-									<form class="remove-confirm" onsubmit={(event) => removeAccount(event, account)} aria-label={`Confirm forgetting saved login for ${accountLabel(account)}`}>
-										<p>Forget the saved login for <strong>{accountLabel(account)}</strong>?</p>
-										<p>This deletes this device's saved login backup. Your CLI stays signed in, and metadata on other devices remains.</p>
+									<div class="account-states">
+										<span class={['state', account.active && 'active']}>{account.active ? 'Current CLI login' : !account.availableLocally ? 'Sign in on this device' : 'Saved locally'}</span>
+										{#if choice?.accountId === account.id}<span class="state recommended">Recommended next</span>{/if}
+										{#if account.disabled}<span class="state">Excluded from routing</span>{/if}
+									</div>
+								</div>
+								<div class={['usage', account.usageStatus !== 'fresh' && account.usageStatus !== 'ok' && 'uncertain']}>
+								<p class="usage-status">{usageLabel(account.usageStatus)}{account.observedAt ? ` · ${date(account.observedAt)}` : ''}</p>
+								{#if account.windows?.length}
+									<dl class="usage-windows">
+										{#each account.windows as window (window.key)}
+											<div>
+												<dt>{window.label}</dt>
+												<dd>{account.usageStatus !== 'fresh' && account.usageStatus !== 'ok' ? 'Last reported ' : ''}<strong>{percent(window.usedPercent)}</strong> used</dd>
+												<dd class="reset">Resets {date(window.resetsAt)}</dd>
+											</div>
+										{/each}
+									</dl>
+								{/if}
+								</div>
+								{#if account.error}<p class="error">{account.error}</p>{/if}
+								<div class="account-actions">
+									<button type="button" data-switch={account.id} disabled={!!working || account.active || !account.availableLocally || data.busy?.[account.provider]} onclick={() => choose(account)}>{account.active ? 'Current account' : 'Switch account'}</button>
+									{#if account.availableLocally}<button type="button" data-remove={account.id} disabled={!!working} onclick={() => chooseRemoval(account)}>Forget saved login</button>{/if}
+									<span>{!account.availableLocally ? 'Use the provider CLI to sign in, then save its current login below.' : 'Login stays on this device.'}</span>
+								</div>
+								{#if switchId === account.id}
+									<form class="switch-confirm" onsubmit={switchAccount} aria-label={`Confirm switch to ${accountLabel(account)}`}>
+										<p>Switch the {providerLabel(account.provider)} login to <strong>{accountLabel(account)}</strong>. The manager will refuse while that CLI is running.</p>
+										<label class="check"><input type="checkbox" bind:checked={stopped} required disabled={!!working} /> I have stopped this provider's CLI sessions.</label>
 										<div class="buttons">
-											<button type="submit" disabled={!!working}>{working === `remove:${account.id}` ? 'Forgetting…' : 'Forget login on this device'}</button>
-											<button type="button" disabled={!!working} onclick={() => { removeId = ''; }}>Cancel</button>
+											<button type="submit" class="primary" disabled={!stopped || !!working || data.busy?.[account.provider]}>{working === 'switch' ? 'Switching…' : 'Switch login'}</button>
+											<button type="button" disabled={!!working} onclick={() => { switchId = ''; stopped = false; }}>Cancel</button>
 										</div>
 									</form>
 								{/if}
-								<details>
-									<summary>Account settings</summary>
-									<form class="settings-form" onsubmit={(event) => saveAccount(event, account)} aria-label={`Settings for ${accountLabel(account)}`}>
-										<div class="fields">
-											<label class="wide">Label<input name="label" value={account.label || ''} maxlength="64" disabled={!!working} /></label>
-											<label>Priority<input name="priority" type="number" min="-100" max="100" step="1" value={account.priority ?? 0} disabled={!!working} /></label>
-											<label>Reserve %<input name="reservePercent" type="number" min="0" max="99" step="1" value={account.reservePercent ?? 0} disabled={!!working} /></label>
-										</div>
-										<p class="field-note">Higher priority wins before subscription preference and quota. Reserve marks allowance you want to keep for other work.</p>
-										<label class="check"><input name="disabled" type="checkbox" checked={account.disabled} disabled={!!working} /> Exclude from automatic routing</label>
-										<button type="submit" disabled={!!working}>{working === `account:${account.id}` ? 'Saving…' : 'Save settings'}</button>
-									</form>
-								</details>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			{:else}
+								{#if account.availableLocally}
+									{#if removeId === account.id}
+										<form class="remove-confirm" onsubmit={(event) => removeAccount(event, account)} aria-label={`Confirm forgetting saved login for ${accountLabel(account)}`}>
+											<p>Forget the saved login for <strong>{accountLabel(account)}</strong>?</p>
+											<p>This deletes this device's saved login backup. Your CLI stays signed in, and metadata on other devices remains.</p>
+											<div class="buttons">
+												<button type="submit" disabled={!!working}>{working === `remove:${account.id}` ? 'Forgetting…' : 'Forget login on this device'}</button>
+												<button type="button" disabled={!!working} onclick={() => { removeId = ''; }}>Cancel</button>
+											</div>
+										</form>
+									{/if}
+									<details>
+										<summary>Account settings</summary>
+										<form class="settings-form" onsubmit={(event) => saveAccount(event, account)} aria-label={`Settings for ${accountLabel(account)}`}>
+											<div class="fields">
+												<label class="wide">Label<input name="label" value={account.label || ''} maxlength="64" disabled={!!working} /></label>
+												<label>Priority<input name="priority" type="number" min="-100" max="100" step="1" value={account.priority ?? 0} disabled={!!working} /></label>
+												<label>Reserve %<input name="reservePercent" type="number" min="0" max="99" step="1" value={account.reservePercent ?? 0} disabled={!!working} /></label>
+											</div>
+											<p class="field-note">Higher priority wins before subscription preference and quota. Reserve marks allowance you want to keep for other work.</p>
+											<label class="check"><input name="disabled" type="checkbox" checked={account.disabled} disabled={!!working} /> Exclude from automatic routing</label>
+											<button type="submit" disabled={!!working}>{working === `account:${account.id}` ? 'Saving…' : 'Save settings'}</button>
+										</form>
+									</details>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+					{#if !providerRows.length && !current}<p class="provider-empty">No saved accounts for this CLI. Sign in through the CLI, then reload accounts.</p>{/if}
+				</section>
+			{/each}
+			{#if !rows.length && !currentLogins.length}
 				<div class="empty"><h3>Save your first CLI account</h3><p>Sign in to Claude Code or Codex in your terminal. Then use “Save current login” below. To add another account, sign in to that account through the same CLI and save again.</p></div>
 			{/if}
 		</section>
-		<section class="capture" aria-labelledby="capture-heading">
-			<h2 id="capture-heading">Save current login</h2>
+		<details class="capture" open={!rows.some((account) => account.availableLocally)} aria-labelledby="capture-heading">
+			<summary id="capture-heading"><h2>Save current login</h2></summary>
 			<p>Sign in with the provider's CLI first. This saves the login already present on this device.</p>
 			<p class="field-note">For another Claude account, use /login without /logout first. Logout may revoke the login you saved earlier.</p>
 			<form onsubmit={capture}>
@@ -252,9 +284,9 @@
 				{/each}
 				<button type="submit" class="primary" disabled={!!working || !captureProvider || !supported.length}>{working === 'capture' ? 'Saving login…' : 'Save current login'}</button>
 			</form>
-		</section>
-		<section aria-labelledby="routing-heading">
-			<h2 id="routing-heading">Routing preferences</h2>
+		</details>
+		<details class="routing" aria-labelledby="routing-heading">
+			<summary id="routing-heading"><h2>Routing preferences</h2></summary>
 			<p>Usage checks can recommend the next account. Applying a switch still requires idle CLIs and your confirmation.</p>
 			<form onsubmit={savePolicy}>
 				<div class="fields">
@@ -279,7 +311,7 @@
 				<p class="field-note">Prepared switches wait for your confirmation. A running session's login will never change automatically.</p>
 				<button type="submit" disabled={!!working}>{working === 'policy' ? 'Saving…' : 'Save preferences'}</button>
 			</form>
-		</section>
+		</details>
 	{/if}
 	<section class="sync" aria-labelledby="sync-heading">
 		<h2 id="sync-heading">Between devices</h2>
@@ -293,6 +325,25 @@
 	:global(#directory:has(.accounts)){max-width:760px}
 	.accounts{--surface:#1a1a20;--border:#2a2a32;--text:#e6e6ea;--muted:#a4a4ae;--control:#2a2a32;--control-hover:#383842;--accent:#e8b761;--success:#91dba5;--error:#ffb4ab;color:var(--text);font-size:14px;line-height:1.5;overflow-wrap:anywhere}
 	.accounts ::selection{background:#e8b761;color:#101014}
+	.feedback{position:sticky;top:12px;z-index:1}
+	.provider-group{margin-top:24px;padding-top:24px;border-top:1px solid var(--border)}
+	.provider-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+	.provider-heading h3{margin:0;font-size:18px}
+	.provider-heading>span{color:var(--muted);font-size:12px;flex:none}
+	.provider-unavailable,.provider-empty{font-size:13px;margin:12px 0}
+	.recommendation{margin-bottom:14px}
+	.recommendation p{font-size:13px;margin-bottom:6px}
+	.recommendation strong{color:var(--text);font-weight:500}
+	.current-login{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px}
+	.current-login .field-note{grid-column:1/-1;margin:0}
+	.current-state{font-size:13px;margin:8px 0 0}
+	.current-state strong{color:var(--success);font-weight:500}
+	.account-states{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+	.state.recommended{color:var(--accent)}
+	.usage{margin:14px 0 16px}
+	.usage.uncertain .usage-status{color:var(--accent)}
+	.capture>summary,.routing>summary{font-size:16px;font-weight:600;color:var(--text)}
+	.capture>p:first-of-type,.routing>p:first-of-type{margin-top:12px}
 	nav{margin-bottom:20px}
 	a{color:var(--muted);text-underline-offset:4px}
 	a:hover{color:var(--text)}
@@ -301,7 +352,7 @@
 	h1{font-size:24px;line-height:1.25;font-weight:650;letter-spacing:-.02em;margin:0 0 8px}
 	h2{font-size:16px;line-height:1.4;font-weight:600;margin:0 0 8px}
 	h2 span{font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;font-variant-numeric:tabular-nums}
-	h3{font-size:16px;font-weight:600;margin:0 0 3px}
+	h3,h4{font-size:16px;font-weight:600;margin:0 0 3px}
 	p{margin:0 0 16px;max-width:70ch;color:var(--muted)}
 	header p{margin-bottom:0}
 	.scope-note{margin-top:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
@@ -332,18 +383,19 @@
 	.identity{font-size:13px;margin:0}
 	.state{font-size:12px;color:var(--muted);text-align:right;flex:none;max-width:150px}
 	.state.active{color:var(--success)}
-	.usage-windows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px;margin:20px 0 12px;font-variant-numeric:tabular-nums}
+	.usage-windows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px;margin:0;font-variant-numeric:tabular-nums}
 	.usage-windows dt{color:var(--muted);font-size:13px}
 	.usage-windows dd{margin:0}
 	.usage-windows strong{font-weight:600}
 	.reset{color:var(--muted);font-size:12px}
-	.usage-status{margin-top:14px;margin-bottom:16px}
+	.usage-status{margin:0 0 8px}
 	.account-actions{display:flex;align-items:center;gap:14px}
 	.account-actions button{flex:none}
 	.account-actions span{color:var(--muted)}
 	details{margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
-	summary{color:var(--muted);cursor:pointer;font-size:13px;min-height:24px}
+	summary{color:var(--muted);cursor:pointer;font-size:13px;min-height:44px;box-sizing:border-box;padding-block:10px}
 	summary:hover{color:var(--text)}
+	summary h2{display:inline;margin:0;font:inherit}
 	.settings-form{padding-top:1px}
 	.switch-confirm,.remove-confirm{margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
 	.switch-confirm p,.remove-confirm p{color:var(--text)}
@@ -352,15 +404,14 @@
 	.empty p{margin:6px 0 0}
 	.capture{padding-top:24px;border-top:1px solid var(--border)}
 	.pending,.error,.notice,.busy-note{border:1px solid var(--border);border-radius:12px;padding:14px 16px;background:var(--surface)}
-	.pending h2{color:var(--accent)}
-	.pending p{margin-bottom:12px}
+	.pending{margin-bottom:12px}.pending p{margin-bottom:12px}
 	.pending p:last-child{margin:0}
 	.error{color:var(--error);margin:0 0 12px}
 	.notice{color:var(--success);margin:0 0 12px}
 	.warning{color:var(--accent)}
 	.sync{padding-top:24px;border-top:1px solid var(--border)}
 	.sync p:last-child{margin-bottom:0}
-	@media(max-width:540px){header,.account-heading{flex-direction:column;gap:12px}.account-heading .state{text-align:left;max-width:none}.fields{grid-template-columns:1fr}.fields .wide{grid-column:auto}.account-actions{align-items:flex-start;flex-direction:column;gap:8px}.account{padding:16px}.section-heading{align-items:flex-start;gap:12px}.section-heading button{font-size:13px;padding-inline:10px}.usage-windows{gap:12px}}
+	@media(max-width:540px){header,.account-heading{flex-direction:column;gap:12px}.current-login{grid-template-columns:minmax(0,1fr);padding:16px}.current-login button{justify-self:start}.account-states{align-items:flex-start}.account-heading .state{text-align:left;max-width:none}.fields{grid-template-columns:1fr}.fields .wide{grid-column:auto}.account-actions{align-items:flex-start;flex-direction:column;gap:8px}.account{padding:16px}.section-heading{align-items:flex-start;gap:12px}.section-heading button{font-size:13px;padding-inline:10px}.usage-windows{gap:12px}}
 	@media(prefers-reduced-motion:reduce){button{transition:none}}
 	@media(prefers-color-scheme:light){:global(body:has(.accounts)){background:#f5f5f7}.accounts{--surface:#fff;--border:#d8d8df;--text:#24242b;--muted:#62626e;--control:#ededf1;--control-hover:#e0e0e7;--accent:#805500;--success:#23743b;--error:#a12b23}.accounts ::selection{background:#e8b761;color:#24242b}button.primary{background:#e8b761;border-color:#9c721d;color:#24242b}button.primary:disabled{color:#24242b}}
 </style>

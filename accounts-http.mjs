@@ -62,7 +62,7 @@ export const accountHttp = (manager, renderPage) => async (req, res) => {
 		const input = await body(req);
 		let model;
 		switch (req.url) {
-			case '/api/accounts/capture': { only(input, ['provider', 'label']); if (req.method !== 'POST') throw new AccountError('method', 'Use POST to capture a login.', 405); model = await manager.capture(input.provider, input.label); break; }
+			case '/api/accounts/capture': { only(input, ['provider', 'label', 'expectedId']); if (req.method !== 'POST') throw new AccountError('method', 'Use POST to capture a login.', 405); model = await manager.capture(input.provider, input.label, input.expectedId); break; }
 			case '/api/accounts/refresh': only(input, []); if (req.method !== 'POST') throw new AccountError('method', 'Use POST to check usage.', 405); model = await manager.refresh(); break;
 			case '/api/accounts/switch': only(input, ['id']); if (req.method !== 'POST') throw new AccountError('method', 'Use POST to switch accounts.', 405); model = await manager.switchAccount(input.id); break;
 			case '/api/accounts/account': model = req.method === 'DELETE' ? await manager.remove(only(input, ['id']).id) : await manager.edit(input); break;

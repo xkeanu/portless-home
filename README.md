@@ -203,9 +203,15 @@ node accounts-cli.mjs refresh
 Homebrew installs the same CLI as `portless-home-accounts`; for example,
 run `portless-home-accounts enable` and `portless-home-accounts capture claude`.
 
-Open `http://127.0.0.1:5995/accounts` to see saved accounts, usage and routing
-preferences. To save another account, sign in normally through the provider
-CLI, then choose **Save current login**. Use **Switch account** after finishing
+Open `http://127.0.0.1:5995/accounts` to see current CLI logins, saved accounts,
+usage and routing preferences grouped by provider. An unsaved current login has
+a **Save account** button. After saving it, sign in to another account normally
+through the provider CLI and return to the page: the new login appears alongside
+your previously saved accounts. Detection runs when opening or returning to the
+page, and **Reload accounts** checks again on demand; it does not save logins or
+poll in the background. Save refuses if the login has changed since it was shown.
+The **Save current login** disclosure also supports an optional account label.
+Use **Switch account** after finishing
 work and stopping that provider's CLI sessions; start a new CLI session yourself
 after the switch. The manager checks for running clients again immediately
 before applying it. It cannot prove an interactive session is idle, change a
