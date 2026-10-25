@@ -10,6 +10,7 @@ const fixture = () => ({
 	enabled: true,
 	providers: [{ id: 'claude', label: 'Claude Code CLI', supported: true }, { id: 'codex', label: 'Codex CLI', supported: true }],
 	accounts: [],
+	currentLogins: [],
 	policy: { strategy: 'best', threshold: 90, auto: false },
 	pending: [],
 	busy: { claude: false, codex: false },
@@ -45,6 +46,103 @@ function change(ui, input, value) {
 	input.dispatchEvent(new ui.window.Event(input.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
 }
 
+test('detected current logins can be saved, and returning after another login retains saved accounts', async () => {
+	const alice = account('alice', { active: true });
+	const bob = account('bob', { active: true });
+	const current = (row, saved) => ({ id: row.id, provider: row.provider, email: row.email, tier: row.tier, saved });
+	let data = { ...fixture(), currentLogins: [current(alice, false)] };
+	const ui = await mount(data, (path, init) => {
+		if (path === '/api/accounts/capture') {
+			const row = data.currentLogins[0].id === 'alice' ? alice : bob;
+			data = { ...data, accounts: [...data.accounts, row], currentLogins: [current(row, true)] };
+		}
+		return Promise.resolve(response(data));
+	});
+	try {
+		assert.match(ui.document.querySelector('[data-current="alice"]').textContent, /Not saved/);
+		assert.equal(ui.document.querySelector('[data-account="alice"]'), null);
+		ui.document.querySelector('[data-save-current="claude"]').click();
+		await settle();
+		assert.deepEqual(ui.requests[0], { path: '/api/accounts/capture', method: 'POST', body: { provider: 'claude', expectedId: 'alice' } });
+		assert.ok(ui.document.querySelector('[data-account="alice"]'));
+		assert.equal(ui.document.querySelector('[data-save-current="claude"]'), null);
+		data = { ...data, accounts: [{ ...alice, active: false }], currentLogins: [current(bob, false)] };
+		ui.window.dispatchEvent(new ui.window.Event('focus'));
+		await settle();
+		assert.ok(ui.document.querySelector('[data-account="alice"]'));
+		assert.match(ui.document.querySelector('[data-current="bob"]').textContent, /Not saved/);
+		ui.document.querySelector('[data-save-current="claude"]').click();
+		await settle();
+		assert.deepEqual(ui.requests.at(-1).body, { provider: 'claude', expectedId: 'bob' });
+		assert.equal(ui.document.querySelectorAll('[data-account]').length, 2);
+		assert.deepEqual(ui.errors, []);
+	} finally { ui.close(); }
+});
+
+test('return detection skips hidden pages, active confirmations, editing and in-flight requests', async () => {
+	let resolve;
+	const ui = await mount({ accounts: [account('first')] }, () => new Promise((done) => { resolve = done; }));
+	try {
+		Object.defineProperty(ui.document, 'visibilityState', { configurable: true, value: 'hidden' });
+		ui.document.dispatchEvent(new ui.window.Event('visibilitychange'));
+		assert.deepEqual(ui.requests, []);
+		Object.defineProperty(ui.document, 'visibilityState', { configurable: true, value: 'visible' });
+		ui.document.querySelector('[data-switch]').click();
+		await settle();
+		ui.window.dispatchEvent(new ui.window.Event('focus'));
+		assert.deepEqual(ui.requests, []);
+		ui.document.querySelector('.switch-confirm button[type="button"]').click();
+		await settle();
+		ui.document.querySelector('.settings-form input').focus();
+		ui.window.dispatchEvent(new ui.window.Event('focus'));
+		assert.deepEqual(ui.requests, []);
+		ui.document.querySelector('.settings-form input').blur();
+		ui.window.dispatchEvent(new ui.window.Event('focus'));
+		ui.document.dispatchEvent(new ui.window.Event('visibilitychange'));
+		assert.equal(ui.requests.length, 1);
+		resolve(response(fixture()));
+		await settle();
+		assert.equal(ui.document.querySelector('.notice'), null);
+		assert.deepEqual(ui.errors, []);
+	} finally { ui.close(); }
+});
+
+test('unsaved login identities are escaped and changed-login errors can be retried after reloading', async () => {
+	const current = { id: 'new', provider: 'codex', email: '<login@example.test>', tier: 'Pro', saved: false };
+	let succeeds = false;
+	const ui = await mount({ currentLogins: [current] }, (path) => Promise.resolve(path === '/api/accounts/capture' && !succeeds
+		? response({ error: 'The CLI login changed. Reload accounts and save the current login again.' }, false)
+		: response({ ...fixture(), currentLogins: [current], accounts: succeeds ? [account('new', { provider: 'codex', active: true })] : [] })));
+	try {
+		assert.equal(ui.document.querySelector('[data-current] h3').textContent, '<login@example.test>');
+		assert.equal(ui.document.querySelector('login'), null);
+		ui.document.querySelector('[data-save-current="codex"]').click();
+		await settle();
+		assert.match(ui.document.querySelector('[role="alert"]').textContent, /Reload accounts/);
+		assert.equal(ui.document.querySelector('[data-save-current]').disabled, false);
+		ui.document.querySelector('header button').click();
+		await settle();
+		succeeds = true;
+		ui.document.querySelector('[data-save-current]').click();
+		await settle();
+		assert.ok(ui.document.querySelector('[data-account="new"]'));
+		assert.deepEqual(ui.errors, []);
+	} finally { ui.close(); }
+});
+
+test('provider groups distinguish current, recommended and excluded states and qualify stale quotas', async () => {
+	const ui = await mount({ accounts: [account('first', { active: true, disabled: true, usageStatus: 'stale', windows: [{ key: 'week', label: 'Weekly', usedPercent: 40, resetsAt: '2026-10-27T12:00:00Z' }] }), account('next', { provider: 'codex' })], recommendations: { claude: { accountId: 'first', reason: 'Explicit fallback.', warnings: [] } } });
+	try {
+		const first = ui.document.querySelector('[data-account="first"]');
+		assert.equal(first.closest('[data-provider]').dataset.provider, 'claude');
+		assert.match(first.querySelector('.account-states').textContent, /Current CLI login.*Recommended next.*Excluded from routing/s);
+		assert.match(first.querySelector('.usage').textContent, /Usage is stale.*Last reported 40%/s);
+		assert.equal(ui.document.querySelector('[data-account="next"]').closest('[data-provider]').dataset.provider, 'codex');
+		assert.equal(ui.document.querySelector('.routing').open, false);
+		assert.equal(ui.document.querySelector('.capture').open, false);
+	} finally { ui.close(); }
+});
+
 test('account page escapes metadata, isolates directory events and explains local capture', async () => {
 	const ui = await mount({
 		accounts: [account('remote', { label: '<img src=x onerror=evil()>', availableLocally: false })],
@@ -56,13 +154,14 @@ test('account page escapes metadata, isolates directory events and explains loca
 		assert.equal(ui.document.querySelector('img'), null);
 		assert.equal(ui.document.querySelector('[data-switch]').disabled, true);
 		assert.equal(ui.document.querySelector('.settings-form'), null);
-		assert.equal(ui.document.querySelector('details'), null);
+		assert.equal(ui.document.querySelector('.account details'), null);
 		assert.equal(ui.document.querySelector('[data-remove]'), null);
 		assert.match(ui.document.querySelector('.state').textContent, /Sign in on this device/);
 		assert.match(ui.document.querySelector('.scope-note').textContent, /Desktop app logins are separate/);
 		assert.match(ui.document.querySelector('.sync').textContent, /Log in separately on each device/);
 		ui.document.dispatchEvent(new ui.window.Event('visibilitychange'));
-		assert.deepEqual(ui.requests, []);
+		await settle();
+		assert.deepEqual(ui.requests, [{ path: '/api/accounts', method: 'GET', body: undefined }]);
 		assert.deepEqual(ui.streams, []);
 		assert.deepEqual(ui.errors, []);
 	} finally { ui.close(); }
@@ -74,7 +173,7 @@ test('routing recommendations expose soft fallback warnings and usage failures a
 		recommendations: { claude: { accountId: 'first', reason: 'Using the explicitly selected fallback account.', warnings: ['Reserve threshold reached.'] }, codex: { accountId: null, reason: 'No usable account.', warnings: [] } },
 	});
 	try {
-		assert.match(ui.document.querySelector('[aria-labelledby="recommendations-heading"]').textContent, /fallback account/);
+		assert.match(ui.document.querySelector('[data-recommendation="claude"]').textContent, /fallback account/);
 		assert.equal(ui.document.querySelector('.warning').textContent, 'Reserve threshold reached.');
 		assert.equal(ui.document.querySelector('.account .error').textContent, '<failed usage>');
 		assert.equal(ui.document.querySelector('select[name="useFirst"] option[value="remote"]'), null);
