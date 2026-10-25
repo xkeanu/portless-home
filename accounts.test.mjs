@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAccountManager, accountId } from './accounts.mjs';
@@ -26,13 +26,82 @@ const fixture = (t, options = {}) => {
 	};
 	const codex = { ...adapter, async capture() { throw new ProviderError('LOGIN_REQUIRED', 'Log in to Codex first.'); } };
 	const manager = createAccountManager({ configPath, providersFactory: () => ({ claude: adapter, codex }), inspectProcesses: () => busy, clock: () => date, ...options.manager });
-	return { manager, adapter, activations, usageCalls, vault: accountVault(`${configPath}.vault`), configPath, setCurrent(value) { current = value; }, setBusy(value) { busy = value; } };
+	return { manager, adapter, codex, activations, usageCalls, vault: accountVault(`${configPath}.vault`), configPath, setCurrent(value) { current = value; }, setBusy(value) { busy = value; } };
 };
 
 test('disabled module does not inspect credentials, processes or peers', async (t) => {
 	const f = fixture(t, { config: { enabled: false }, manager: { providersFactory() { throw new Error('unexpected credential read'); }, inspectProcesses() { throw new Error('unexpected process read'); } } });
-	assert.equal((await f.manager.snapshot()).enabled, false);
+	const view = await f.manager.snapshot();
+	assert.equal(view.enabled, false);
+	assert.deepEqual(view.currentLogins, []);
 	await assert.rejects(f.manager.capture('claude'), { code: 'disabled' });
+});
+
+for (const provider of ['claude', 'codex']) test(`${provider} current login stays unsaved until identity-bound capture and retains previous accounts`, async (t) => {
+	const f = fixture(t);
+	let current = login('alice', provider);
+	let reads = 0;
+	f.adapter.capture = async () => { throw new ProviderError('LOGIN_REQUIRED', 'Log in first.'); };
+	const adapter = provider === 'claude' ? f.adapter : f.codex;
+	adapter.capture = async () => { reads += 1; return current; };
+	const projected = (name, saved) => ({ id: accountId(provider, `${name}:workspace`), provider, email: `${name}@example.test`, tier: 'pro', saved });
+	let view = await f.manager.snapshot();
+	assert.deepEqual(view.currentLogins, [projected('alice', false)]);
+	assert.equal(reads, 1, 'snapshot reuses the active identity capture');
+	assert.deepEqual(view.accounts, []);
+	assert.equal(JSON.stringify(view.recommendations).includes(projected('alice', false).id), false);
+	assert.equal(existsSync(`${f.configPath}.vault`), false, 'detection creates no vault');
+	assert.deepEqual((await f.manager.metadata()).accounts, []);
+	assert.doesNotMatch(JSON.stringify(view.currentLogins), /accountId|payload|token|fixture-secret|alice:workspace/);
+	view = await f.manager.capture(provider, 'Personal', view.currentLogins[0].id);
+	assert.deepEqual(view.currentLogins, [projected('alice', true)]);
+	current = login('bob', provider);
+	const before = readFileSync(`${f.configPath}.vault/vault.json`);
+	view = await f.manager.snapshot();
+	assert.deepEqual(view.currentLogins, [projected('bob', false)]);
+	assert.deepEqual(view.accounts.map((row) => row.id), [projected('alice', true).id]);
+	assert.deepEqual(readFileSync(`${f.configPath}.vault/vault.json`), before);
+	assert.deepEqual((await f.manager.metadata()).accounts.map((row) => row.id), [projected('alice', true).id]);
+	view = await f.manager.capture(provider, 'Work', view.currentLogins[0].id);
+	assert.deepEqual(view.currentLogins, [projected('bob', true)]);
+	assert.deepEqual(view.accounts.map((row) => row.id), [projected('alice', true).id, projected('bob', true).id]);
+	assert.equal(f.vault.read().accounts.length, 2);
+	assert.doesNotMatch(JSON.stringify([view, await f.manager.metadata()]), /fixture-secret|payload|token/);
+});
+
+for (const provider of ['claude', 'codex']) test(`${provider} identity-bound save rejects changed and malformed logins without vault mutation`, async (t) => {
+	const f = fixture(t);
+	let current = login('alice', provider);
+	let reads = 0;
+	const adapter = provider === 'claude' ? f.adapter : f.codex;
+	adapter.capture = async () => { reads += 1; return current; };
+	const alice = accountId(provider, current.identity.accountId);
+	await f.manager.capture(provider, 'Original', alice);
+	current = login('bob', provider);
+	const before = readFileSync(`${f.configPath}.vault/vault.json`);
+	await assert.rejects(f.manager.capture(provider, 'Changed label', alice), { code: 'login-changed', status: 409, message: /Reload accounts/ });
+	assert.deepEqual(readFileSync(`${f.configPath}.vault/vault.json`), before);
+	const beforeReads = reads;
+	for (const invalid of [null, '', 42, {}, [], 'a'.repeat(65), `${provider}-raw-account`, accountId(provider === 'claude' ? 'codex' : 'claude', 'alice:workspace'), alice.toUpperCase(), `${alice}\n`, ` ${alice}`]) {
+		await assert.rejects(f.manager.capture(provider, 'Invalid', invalid), { code: 'input', status: 400 });
+		assert.deepEqual(readFileSync(`${f.configPath}.vault/vault.json`), before);
+	}
+	assert.equal(reads, beforeReads, 'invalid IDs are rejected before credential reads');
+	await assert.rejects(f.manager.capture('unsupported', undefined, alice), { code: 'provider' });
+	assert.equal(f.vault.read().accounts.length, 1);
+});
+
+test('a current remote-only identity is not saved locally or included in local metadata', async (t) => {
+	const f = fixture(t);
+	const id = accountId('claude', 'alice:workspace');
+	await f.vault.update((state) => { state.remote = [{ accounts: [{ id, ...login('alice').identity, label: 'Other device', preferencesUpdatedAt: date.toISOString() }] }]; });
+	const before = readFileSync(`${f.configPath}.vault/vault.json`);
+	const view = await f.manager.snapshot();
+	assert.equal(view.currentLogins[0].saved, false);
+	assert.equal(view.accounts[0].availableLocally, false);
+	assert.deepEqual((await f.manager.metadata()).accounts, []);
+	assert.deepEqual(f.vault.read().accounts, []);
+	assert.deepEqual(readFileSync(`${f.configPath}.vault/vault.json`), before);
 });
 
 test('capture identities distinguish users within one workspace and public views exclude opaque credentials', async (t) => {
