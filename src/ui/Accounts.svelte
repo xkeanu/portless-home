@@ -45,14 +45,14 @@
 			const result = await response.json();
 			if (superseded()) return false;
 			if (!response.ok || result.error) {
-				error = result.error || 'The account action failed. Try again.';
+				if (!background) error = result.error || 'The account action failed. Try again.';
 				return false;
 			}
 			snapshot = result.accounts?.accounts ? result.accounts : result;
 			if (!background) notice = message;
 			return true;
 		} catch {
-			if (!superseded()) error = 'Could not reach the account manager. Reload the page and try again.';
+			if (!background) error = 'Could not reach the account manager. Reload the page and try again.';
 			return false;
 		} finally {
 			if (background) detecting = false;

@@ -131,6 +131,29 @@ test('return detection keeps Save usable and discards a late snapshot after an a
 	} finally { resolveReload?.(response(original)); ui.close(); }
 });
 
+test('failed return reads preserve action feedback and later return reads recover', async () => {
+	const current = { id: 'first', provider: 'claude', email: 'first@example.test', tier: 'Max', saved: false };
+	const saved = { ...fixture(), accounts: [account('first', { active: true })], currentLogins: [{ ...current, saved: true }] };
+	let failure = 'network';
+	const ui = await mount({ currentLogins: [current] }, (path) => {
+		if (path === '/api/accounts' && failure === 'network') return Promise.reject(new Error('offline'));
+		return Promise.resolve(response(path === '/api/accounts' && failure === 'http' ? { error: 'Temporarily unavailable.' } : saved, failure !== 'http'));
+	});
+	try {
+		ui.document.querySelector('[data-save-current]').click();
+		await settle();
+		for (const next of ['network', 'http', '']) {
+			failure = next;
+			ui.window.dispatchEvent(new ui.window.Event('focus'));
+			await settle();
+			assert.equal(ui.document.querySelector('[role="alert"]'), null);
+			assert.match(ui.document.querySelector('.notice').textContent, /Current CLI login saved/);
+		}
+		assert.equal(ui.requests.filter((request) => request.path === '/api/accounts').length, 3);
+		assert.ok(ui.document.querySelector('[data-account="first"]'));
+	} finally { ui.close(); }
+});
+
 test('unsaved login identities are escaped and changed-login errors can be retried after reloading', async () => {
 	const current = { id: 'new', provider: 'codex', email: '<login@example.test>', tier: 'Pro', saved: false };
 	let succeeds = false;
