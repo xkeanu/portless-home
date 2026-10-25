@@ -107,6 +107,30 @@ test('return detection skips hidden pages, active confirmations, editing and in-
 	} finally { ui.close(); }
 });
 
+test('return detection keeps Save usable and discards a late snapshot after an account action', async () => {
+	const current = { id: 'first', provider: 'claude', email: 'first@example.test', tier: 'Max', saved: false };
+	let resolveReload;
+	const original = { ...fixture(), currentLogins: [current] };
+	const ui = await mount(original, (path) => path === '/api/accounts'
+		? new Promise((resolve) => { resolveReload = resolve; })
+		: Promise.resolve(response({ ...fixture(), accounts: [account('first', { active: true })], currentLogins: [{ ...current, saved: true }] })));
+	try {
+		ui.window.dispatchEvent(new ui.window.Event('focus'));
+		await settle();
+		const save = ui.document.querySelector('[data-save-current]');
+		assert.equal(save.disabled, false);
+		save.click();
+		await settle();
+		assert.ok(ui.document.querySelector('[data-account="first"]'));
+		resolveReload(response(original));
+		await settle();
+		assert.ok(ui.document.querySelector('[data-account="first"]'));
+		assert.equal(ui.document.querySelector('[data-save-current]'), null);
+		assert.match(ui.document.querySelector('.notice').textContent, /Current CLI login saved/);
+		assert.deepEqual(ui.errors, []);
+	} finally { resolveReload?.(response(original)); ui.close(); }
+});
+
 test('unsaved login identities are escaped and changed-login errors can be retried after reloading', async () => {
 	const current = { id: 'new', provider: 'codex', email: '<login@example.test>', tier: 'Pro', saved: false };
 	let succeeds = false;
@@ -114,7 +138,7 @@ test('unsaved login identities are escaped and changed-login errors can be retri
 		? response({ error: 'The CLI login changed. Reload accounts and save the current login again.' }, false)
 		: response({ ...fixture(), currentLogins: [current], accounts: succeeds ? [account('new', { provider: 'codex', active: true })] : [] })));
 	try {
-		assert.equal(ui.document.querySelector('[data-current] h3').textContent, '<login@example.test>');
+		assert.equal(ui.document.querySelector('[data-current] h4').textContent, '<login@example.test>');
 		assert.equal(ui.document.querySelector('login'), null);
 		ui.document.querySelector('[data-save-current="codex"]').click();
 		await settle();
@@ -143,6 +167,16 @@ test('provider groups distinguish current, recommended and excluded states and q
 	} finally { ui.close(); }
 });
 
+test('account groups and setup disclosures preserve heading navigation', async () => {
+	const ui = await mount({ accounts: [account('first')] });
+	try {
+		assert.equal(ui.document.querySelector('.capture summary h2').textContent, 'Save current login');
+		assert.equal(ui.document.querySelector('.routing summary h2').textContent, 'Routing preferences');
+		assert.equal(ui.document.querySelector('[data-provider="claude"] h3').textContent, 'Claude Code CLI');
+		assert.equal(ui.document.querySelector('[data-account="first"] h4').textContent, 'first');
+	} finally { ui.close(); }
+});
+
 test('account page escapes metadata, isolates directory events and explains local capture', async () => {
 	const ui = await mount({
 		accounts: [account('remote', { label: '<img src=x onerror=evil()>', availableLocally: false })],
@@ -150,7 +184,7 @@ test('account page escapes metadata, isolates directory events and explains loca
 	});
 	try {
 		assert.equal(ui.document.querySelector('main').getAttribute('lang'), 'en');
-		assert.equal(ui.document.querySelector('h3').textContent, '<img src=x onerror=evil()>');
+		assert.equal(ui.document.querySelector('[data-account] h4').textContent, '<img src=x onerror=evil()>');
 		assert.equal(ui.document.querySelector('img'), null);
 		assert.equal(ui.document.querySelector('[data-switch]').disabled, true);
 		assert.equal(ui.document.querySelector('.settings-form'), null);
@@ -198,7 +232,7 @@ test('capture uses a provider and label only, prevents duplicate requests, and u
 		assert.equal(ui.requests.length, 1);
 		resolve(response({ ...fixture(), accounts: [account('work', { label: 'Work' })] }));
 		await settle();
-		assert.equal(ui.document.querySelector('h3').textContent, 'Work');
+		assert.equal(ui.document.querySelector('[data-account] h4').textContent, 'Work');
 		assert.equal(form.querySelector('input').value, '');
 		assert.match(ui.document.querySelector('.notice').textContent, /Current CLI login saved/);
 		assert.equal(form.querySelector('button').disabled, false);

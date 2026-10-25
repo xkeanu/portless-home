@@ -9,6 +9,8 @@
 	let switchId = $state('');
 	let removeId = $state('');
 	let stopped = $state(false);
+	let detecting = false;
+	let requestVersion = 0;
 	const data = $derived(snapshot ?? model.accounts);
 	const rows = $derived(data.accounts ?? []);
 	const currentLogins = $derived(data.currentLogins ?? []);
@@ -25,35 +27,42 @@
 	const usageLabel = (status) => ({ unavailable: 'Usage unavailable', fresh: 'Usage checked', ok: 'Usage checked', stale: 'Usage is stale', unknown: 'Usage unknown', error: 'Usage check failed', unsupported: 'Usage unavailable' })[status] ?? 'Usage unknown';
 	const percent = (value) => Number.isFinite(value) ? `${Math.round(value)}%` : 'Unknown';
 
-	async function request(action, path, body, message, method = 'POST') {
-		if (working) return false;
-		working = action;
-		error = '';
-		notice = '';
+	async function request(action, path, body, message, method = 'POST', { background = false } = {}) {
+		if (working || (background && detecting)) return false;
+		const version = background ? requestVersion : ++requestVersion;
+		const superseded = () => background && (requestVersion !== version || working || switchId || removeId || document.activeElement?.closest('form'));
+		if (background) detecting = true;
+		else {
+			working = action;
+			error = '';
+			notice = '';
+		}
 		try {
 			const response = await fetch(path, {
 				method,
 				...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
 			});
 			const result = await response.json();
+			if (superseded()) return false;
 			if (!response.ok || result.error) {
 				error = result.error || 'The account action failed. Try again.';
 				return false;
 			}
 			snapshot = result.accounts?.accounts ? result.accounts : result;
-			notice = message;
+			if (!background) notice = message;
 			return true;
 		} catch {
-			error = 'Could not reach the account manager. Reload the page and try again.';
+			if (!superseded()) error = 'Could not reach the account manager. Reload the page and try again.';
 			return false;
 		} finally {
-			working = '';
+			if (background) detecting = false;
+			else working = '';
 		}
 	}
 
 	function refreshOnReturn() {
 		if (working || switchId || removeId || document.visibilityState === 'hidden' || document.activeElement?.closest('form')) return;
-		return request('reload', '/api/accounts', undefined, '', 'GET');
+		return request('reload', '/api/accounts', undefined, '', 'GET', { background: true });
 	}
 
 	function saveCurrent(login) {
@@ -156,7 +165,7 @@
 				{@const pending = data.pending?.find((entry) => entry.provider === provider.id)}
 				{@const pendingAccount = rows.find((account) => account.id === pending?.id)}
 				<section class="provider-group" data-provider={provider.id} aria-labelledby={`provider-${provider.id}`}>
-					<div class="provider-heading"><h2 id={`provider-${provider.id}`}>{provider.label}</h2><span>{providerRows.filter((account) => account.availableLocally).length} saved here</span></div>
+					<div class="provider-heading"><h3 id={`provider-${provider.id}`}>{provider.label}</h3><span>{providerRows.filter((account) => account.availableLocally).length} saved here</span></div>
 					{#if data.busy?.[provider.id]}<p class="busy-note" role="status">{provider.label} is running. Finish your work and close those CLI sessions, then reload accounts to enable switching.</p>{/if}
 					{#if !provider.supported}<p class="provider-unavailable">{provider.error || 'Login detection is unavailable on this device.'}</p>{/if}
 					{#if choice && (providerRows.length || choice.accountId)}
@@ -170,7 +179,7 @@
 					{/if}
 					{#if current && !current.saved}
 						<div class="current-login" data-current={current.id}>
-							<div><h3>{current.email || 'Current CLI login'}</h3><p class="identity">{current.tier || provider.label}</p><p class="current-state"><strong>Current CLI login</strong> · Not saved</p></div>
+							<div><h4>{current.email || 'Current CLI login'}</h4><p class="identity">{current.tier || provider.label}</p><p class="current-state"><strong>Current CLI login</strong> · Not saved</p></div>
 							<button class="primary" type="button" data-save-current={provider.id} disabled={!!working} onclick={() => saveCurrent(current)}>{working === `capture:${provider.id}` ? 'Saving…' : 'Save account'}</button>
 							<p class="field-note">Save this login on this device to switch back to it later.</p>
 						</div>
@@ -180,7 +189,7 @@
 							<li class="account" data-account={account.id}>
 								<div class="account-heading">
 									<div>
-										<h3>{accountLabel(account)}</h3>
+										<h4>{accountLabel(account)}</h4>
 										<p class="identity">{providerLabel(account.provider)}{account.tier ? ` · ${account.tier}` : ''}{account.email && account.label ? ` · ${account.email}` : ''}</p>
 									</div>
 									<div class="account-states">
@@ -255,7 +264,7 @@
 			{/if}
 		</section>
 		<details class="capture" open={!rows.some((account) => account.availableLocally)} aria-labelledby="capture-heading">
-			<summary id="capture-heading">Save current login</summary>
+			<summary id="capture-heading"><h2>Save current login</h2></summary>
 			<p>Sign in with the provider's CLI first. This saves the login already present on this device.</p>
 			<p class="field-note">For another Claude account, use /login without /logout first. Logout may revoke the login you saved earlier.</p>
 			<form onsubmit={capture}>
@@ -277,7 +286,7 @@
 			</form>
 		</details>
 		<details class="routing" aria-labelledby="routing-heading">
-			<summary id="routing-heading">Routing preferences</summary>
+			<summary id="routing-heading"><h2>Routing preferences</h2></summary>
 			<p>Usage checks can recommend the next account. Applying a switch still requires idle CLIs and your confirmation.</p>
 			<form onsubmit={savePolicy}>
 				<div class="fields">
@@ -319,7 +328,7 @@
 	.feedback{position:sticky;top:12px;z-index:1}
 	.provider-group{margin-top:24px;padding-top:24px;border-top:1px solid var(--border)}
 	.provider-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
-	.provider-heading h2{margin:0;font-size:18px}
+	.provider-heading h3{margin:0;font-size:18px}
 	.provider-heading>span{color:var(--muted);font-size:12px;flex:none}
 	.provider-unavailable,.provider-empty{font-size:13px;margin:12px 0}
 	.recommendation{margin-bottom:14px}
@@ -343,7 +352,7 @@
 	h1{font-size:24px;line-height:1.25;font-weight:650;letter-spacing:-.02em;margin:0 0 8px}
 	h2{font-size:16px;line-height:1.4;font-weight:600;margin:0 0 8px}
 	h2 span{font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;font-variant-numeric:tabular-nums}
-	h3{font-size:16px;font-weight:600;margin:0 0 3px}
+	h3,h4{font-size:16px;font-weight:600;margin:0 0 3px}
 	p{margin:0 0 16px;max-width:70ch;color:var(--muted)}
 	header p{margin-bottom:0}
 	.scope-note{margin-top:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
@@ -386,6 +395,7 @@
 	details{margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
 	summary{color:var(--muted);cursor:pointer;font-size:13px;min-height:44px;box-sizing:border-box;padding-block:10px}
 	summary:hover{color:var(--text)}
+	summary h2{display:inline;margin:0;font:inherit}
 	.settings-form{padding-top:1px}
 	.switch-confirm,.remove-confirm{margin-top:20px;padding-top:20px;border-top:1px solid var(--border)}
 	.switch-confirm p,.remove-confirm p{color:var(--text)}
