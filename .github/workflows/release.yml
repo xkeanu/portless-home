@@ -76,6 +76,17 @@ jobs:
           swift test
           ./build.sh
           test -x dist/PortlessHome.app/Contents/MacOS/PortlessHome
+      - name: zip the ad-hoc-signed app
+        working-directory: macos
+        run: |
+          mkdir -p ../release
+          ditto -c -k --keepParent dist/PortlessHome.app "../release/PortlessHome-$GITHUB_REF_NAME-macos.zip"
+      - name: retain the macOS app for publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: release/
+          if-no-files-found: error
 
   publish:
     needs: [validate, windows, macos]
@@ -87,11 +98,15 @@ jobs:
         with:
           name: release-assets
           path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-app
+          path: release
       - name: publish GitHub release after every gate passes
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+        # Every release stays a pre-release until signed builds land (#34).
         run: |
-          prerelease=()
-          if [[ "${GITHUB_REF_NAME%%+*}" == *-* ]]; then prerelease=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" release/* --repo "$GH_REPO" --verify-tag "${prerelease[@]}" --title "$GITHUB_REF_NAME" --generate-notes
+          notes="The macOS app (PortlessHome-$GITHUB_REF_NAME-macos.zip) is unsigned (ad-hoc signature only), so macOS blocks its first launch. Open it once, then choose System Settings → Privacy & Security → Open Anyway, or run \`xattr -dr com.apple.quarantine /Applications/PortlessHome.app\`. Signed and notarized builds are tracked in #34."
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$GH_REPO" --verify-tag --prerelease --title "$GITHUB_REF_NAME" --notes "$notes" --generate-notes

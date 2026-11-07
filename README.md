@@ -67,6 +67,10 @@ cd portless-home-vX.Y.Z
 ./install.sh
 ```
 
+Releases are marked as pre-releases. Each one also carries the macOS menu bar
+app as `PortlessHome-vX.Y.Z-macos.zip`; see [Native app](#native-app) for its
+first-launch step.
+
 ### Build from source
 
 Use a checkout when working on the project or tracking HEAD:
@@ -399,6 +403,23 @@ brew install --HEAD xkeanu/portless-home/portless-home-app
 mkdir -p ~/Applications && ln -sf "$(brew --prefix)/opt/portless-home-app/PortlessHome.app" ~/Applications/
 ```
 
+Or download `PortlessHome-vX.Y.Z-macos.zip` from a
+[release](https://github.com/xkeanu/portless-home/releases), unzip it, and
+move `PortlessHome.app` into `/Applications` or `~/Applications`. This build is
+unsigned on purpose: it carries only an ad-hoc signature, because Developer ID
+signing and notarization are not set up yet (tracked in
+[#34](https://github.com/xkeanu/portless-home/issues/34)). macOS blocks the
+first launch. Open the app once, dismiss the warning, then go to **System
+Settings → Privacy & Security** and click **Open Anyway**. From a terminal you
+can instead clear the quarantine flag before the first launch:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/PortlessHome.app
+```
+
+To skip this step, use the Homebrew install above: it compiles locally, so
+the app is never quarantined.
+
 Or build it from a checkout: `macos/build.sh` writes
 `macos/dist/PortlessHome.app`; move that into `~/Applications`. Tests:
 `cd macos && swift test`.
@@ -562,5 +583,7 @@ not provide archive writers. The manifest order, file timestamps, archive
 ownership, gzip timestamp, and stripped zip metadata keep repeated builds on
 the release runner reproducible.
 
-Signed and notarized macOS binaries and a Homebrew cask are tracked separately
-in #34. They are not part of these Node release archives.
+The tag workflow also zips the ad-hoc-signed `PortlessHome.app` with
+`ditto -c -k --keepParent` and publishes it as `PortlessHome-vX.Y.Z-macos.zip`
+next to the Node archives. Every release is a pre-release until signed and
+notarized macOS builds and a Homebrew cask land (#34).
