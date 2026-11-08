@@ -13,6 +13,7 @@ import { strings } from './i18n.mjs';
 import { events, readText, stamp } from './live.mjs';
 import { launcher, localRequest, readRegistry } from './launch.mjs';
 import { readExternalApps } from './external.mjs';
+import { appFields, groupProjects } from './projects.mjs';
 import { createAccountManager } from './accounts.mjs';
 import { accountHttp } from './accounts-http.mjs';
 
@@ -111,7 +112,9 @@ const readLayout = () => {
 
 const parseRoutes = (text) => {
 	try {
-		return JSON.parse(text).filter((r) => alive(r.pid));
+		// Static routes (portless alias, compose) have pid 0 and no process to
+		// check; their status comes from the health probe alone.
+		return JSON.parse(text).filter((r) => r.pid === 0 || alive(r.pid));
 	} catch {
 		return [];
 	}
@@ -245,15 +248,18 @@ export const handler = async (req, res) => {
 	// UI strings follow the browser's language (see i18n.mjs).
 	const t = strings(req.headers['accept-language']);
 	const stopped = localRequest(req) ? readRegistry(APPS).filter((a) => !routes.some((r) => r.hostname === a.hostname)) : [];
+	const local = groupProjects(routes.map((r, i) => ({
+		hostname: r.hostname, tailscaleUrl: r.tailscaleUrl,
+		...appFields(r, names), up: up[i], pinned: pinned.has(r.hostname),
+	})));
 	const model = {
 		device: hostname(),
-		routes: routes.map((r, i) => ({
-			hostname: r.hostname, tailscaleUrl: r.tailscaleUrl,
-			label: displayName(r.hostname, names), up: up[i], pinned: pinned.has(r.hostname),
-		})),
+		routes: local.apps,
+		projects: local.projects,
 		registered: stopped.map((a) => ({ hostname: a.hostname, label: displayName(a.hostname, names), state: launches.state(a.hostname) })),
 		external: readExternalApps(EXTERNAL_APPS),
-		peers, tailnetUp: hasTailnetAddr(networkInterfaces()), t, stamp: stamp(text),
+		peers: peers.map((peer) => peer && { device: peer.device, ...groupProjects(peer.apps) }),
+		tailnetUp: hasTailnetAddr(networkInterfaces()), t, stamp: stamp(text),
 	};
 	if (localRequest(req)) {
 		try { model.accountManagementEnabled = accounts.settings().enabled === true; } catch {}

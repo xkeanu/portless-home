@@ -14,7 +14,11 @@ fake app names and `example.ts.net`, not a real tailnet.
 Portless's `--tailscale` mode shares each app on its own port of your
 device's MagicDNS name (`:443`, `:8443`, `:8444`, …), assigned by start
 order — so from another device you never know which port an app got.
-portless-home claims `:443` with a directory page instead:
+portless-home claims `:443` with a directory page instead. Unlike a
+dashboard built into portless (proposed in
+[portless#211](https://github.com/vercel-labs/portless/issues/211)), which
+would list one machine's apps on `localhost`, it is made for your phone and
+other tailnet devices, and can show the apps of several machines on one page.
 
 - the bare device URL always shows the list, updating the moment an app
   starts or stops (server-sent events; a 15s refresh if the stream fails)
@@ -24,6 +28,10 @@ portless-home claims `:443` with a directory page instead:
   not
 - apps running without Tailscale sharing show up greyed out as "local
   only"
+- services of a Docker Compose project started with `portless compose up`
+  share one card per project, each with its own health dot; static
+  `portless alias` routes show up as ordinary cards (see
+  [Docker Compose and aliases](#docker-compose-and-aliases))
 - a banner warns when Tailscale itself is down (tailnet links would be
   dead) with the command to reconnect
 - optionally, apps from your other machines too, grouped under one
@@ -34,7 +42,8 @@ portless-home claims `:443` with a directory page instead:
 
 It's a tiny dependency-free Node server (`server.mjs`, plus `render.mjs`
 for the HTML, `i18n.mjs` for its labels, `peers.mjs` for talking to
-other instances and `live.mjs` for the change stream) reading portless's
+other instances, `projects.mjs` for grouping Compose services and `live.mjs`
+for the change stream) reading portless's
 own `~/.portless/routes.json` on every request. Nothing to configure,
 nothing to restart when apps come and go. It listens on `127.0.0.1` and
 is reachable through `tailscale serve` according to your tailnet's access
@@ -191,6 +200,35 @@ shows no extra section; deleting the file removes the links. The server never
 requests these URLs or checks availability, so entries have no health dots or
 app controls. They are absent from peer snapshots and menu bar clients. This
 configuration is separate from the local launcher below.
+
+## Docker Compose and aliases
+
+portless 0.16 and newer can route Docker Compose services and fixed ports:
+
+```sh
+portless compose up -d       # one route per published HTTP port: web.shop.localhost, api.shop.localhost
+portless alias grafana 3000  # grafana.localhost -> 127.0.0.1:3000
+```
+
+Both are static routes: `routes.json` stores them with `pid: 0` because no
+portless process owns them (see `docs/fixtures/routes.compose.json`, captured
+from portless 0.16.0). portless-home keeps every static route and takes its
+status from the health probe alone: green while the port answers, grey
+otherwise. Routes with a process id still disappear when that process exits;
+a self-daemonizing app stays listed because portless moves its route to the
+background server's process.
+
+Static routes named `<service>.<project>.localhost` are grouped into one card
+per Compose project, with a row and health dot for each service. Peers that
+run this version send the project name too, so a Compose project on another
+machine is grouped the same way. Aliases and `portless run` apps keep their
+own cards; a `portless run` worktree route such as `fix-login.blog.localhost`
+has a live process and is not grouped. Renaming via `names.json` works for
+services too; pinning applies to ordinary cards only.
+
+portless 0.16.0 does not share static routes over Tailscale, so Compose
+services and aliases appear greyed out as "local only" with their
+`.localhost` name.
 
 ## Optional CLI account manager
 
@@ -543,12 +581,13 @@ node server.mjs
 ```
 
 `PORTLESS_ROUTES` points it at any other routes file. The server hides
-entries whose `pid` isn't a live process, so to preview the bundled
-fixture (the one the screenshot above is rendered from), stamp its
-entries with a live pid first:
+entries whose `pid` isn't a live process (static `pid: 0` routes stay), so
+to preview a bundled fixture (`routes.example.json` is the one the
+screenshot above is rendered from; `routes.compose.json` adds a Compose
+project and an alias), stamp its process entries with a live pid first:
 
 ```sh
-node -e 'const fs=require("fs"),r=JSON.parse(fs.readFileSync("docs/fixtures/routes.example.json","utf8"));fs.writeFileSync("/tmp/routes.json",JSON.stringify(r.map(x=>({...x,pid:+process.argv[1]}))))' $$
+node -e 'const fs=require("fs"),r=JSON.parse(fs.readFileSync("docs/fixtures/routes.example.json","utf8"));fs.writeFileSync("/tmp/routes.json",JSON.stringify(r.map(x=>({...x,pid:x.pid&&+process.argv[1]}))))' $$
 PORTLESS_ROUTES=/tmp/routes.json node server.mjs
 ```
 

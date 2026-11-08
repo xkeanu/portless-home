@@ -9,7 +9,7 @@ class PortlessHome < Formula
   def install
     system "npm", "ci", "--ignore-scripts"
     system "npm", "run", "build"
-    libexec.install "server.mjs", "render.mjs", "i18n.mjs", "peers.mjs", "menubar.mjs", "live.mjs", "launch.mjs", "external.mjs", "dist"
+    libexec.install "server.mjs", "render.mjs", "i18n.mjs", "peers.mjs", "menubar.mjs", "live.mjs", "launch.mjs", "external.mjs", "projects.mjs", "dist"
     libexec.install "accounts.mjs", "accounts-http.mjs", "accounts-cli.mjs", "account-store.mjs",
                     "account-providers.mjs", "account-processes.mjs", "account-routing.mjs", "account-sync.mjs"
     pkgshare.install "menubar"

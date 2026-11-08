@@ -2,6 +2,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
+import { spawn } from 'node:child_process';
 import { writeFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -936,6 +937,84 @@ test('GET /api/routes returns this device and its apps as JSON, with labels and 
 	} finally {
 		close();
 		live.close();
+	}
+});
+
+test('GET / groups Compose services into one project card; static routes are kept and probed', async () => {
+	const live = createServer((req, res) => res.end());
+	await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
+	const livePort = live.address().port;
+	const dead = createServer((req, res) => res.end());
+	await new Promise((resolve) => dead.listen(0, '127.0.0.1', resolve));
+	const deadPort = dead.address().port;
+	await new Promise((resolve) => dead.close(resolve));
+	// A self-daemonizing app: portless moves the route to the background server's pid.
+	const daemon = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const { port, close } = await bootFixture(dir, {
+		'routes.json': [
+			{ hostname: 'blog.localhost', port: livePort, pid: process.pid, tailscaleUrl: 'https://mini.example.ts.net:8443' },
+			{ hostname: 'api.shop.localhost', port: deadPort, pid: 0, registeredAt: 1 },
+			{ hostname: 'web.shop.localhost', port: livePort, pid: 0, registeredAt: 2 },
+			{ hostname: 'grafana.localhost', port: livePort, pid: 0, registeredAt: 3 },
+			{ hostname: 'daemon.localhost', port: livePort, pid: daemon.pid },
+			{ hostname: 'gone.localhost', port: livePort, pid: 4194305 },
+		],
+	});
+	try {
+		const doc = documentOf((await get(port)).data);
+		// Plain `portless run` app: the same interactive card as before.
+		const blog = doc.querySelector('li[data-host="blog.localhost"]');
+		assert.equal(blog.querySelector('.name').textContent, 'blog');
+		assert.equal(blog.querySelector('a.url').getAttribute('href'), 'https://mini.example.ts.net:8443');
+		assert.equal(blog.querySelector('.dot').getAttribute('aria-label'), 'online');
+		// An alias has no project and stays a plain card, with probe-only status.
+		assert.equal(doc.querySelector('li[data-host="grafana.localhost"] .dot').getAttribute('aria-label'), 'online');
+		assert.ok(doc.querySelector('li[data-host="daemon.localhost"]'));
+		assert.equal(doc.querySelector('li[data-host="gone.localhost"]'), null);
+		// One card for the project, a row and dot per service.
+		const projects = doc.querySelectorAll('li.project');
+		assert.equal(projects.length, 1);
+		assert.equal(projects[0].querySelector('.project-name').textContent, 'shop');
+		const services = [...projects[0].querySelectorAll('.services li')];
+		assert.deepEqual(services.map((li) => li.querySelector('.name').textContent), ['api', 'web']);
+		assert.deepEqual(services.map((li) => li.querySelector('.dot').getAttribute('aria-label')), ['offline', 'online']);
+		assert.match(services[1].querySelector('.url').textContent, /web\.shop\.localhost/);
+		assert.equal(doc.querySelector('[data-host="web.shop.localhost"]'), null);
+
+		const api = JSON.parse((await getPath(port, '/api/routes')).data);
+		assert.deepEqual(api.apps.find((a) => a.hostname === 'web.shop.localhost'), { hostname: 'web.shop.localhost', label: 'web', project: 'shop', up: true });
+		assert.deepEqual(api.apps.find((a) => a.hostname === 'blog.localhost'), { hostname: 'blog.localhost', label: 'blog', tailscaleUrl: 'https://mini.example.ts.net:8443', up: true });
+	} finally {
+		close();
+		live.close();
+		daemon.kill();
+	}
+});
+
+test('GET / renders a peer\'s Compose project as the same grouped card', async () => {
+	const peer = await jsonServer({
+		device: 'laptop',
+		apps: [
+			{ hostname: 'notes.localhost', label: 'notes', up: true },
+			{ hostname: 'web.shop.localhost', label: 'web', project: 'shop', tailscaleUrl: 'https://laptop.example.ts.net:8450', up: true },
+			{ hostname: 'api.shop.localhost', label: 'api', project: 'shop', up: false },
+		],
+	});
+	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const { port, close } = await bootFixture(dir, { 'peers.json': { peers: [peer.base] } });
+	try {
+		const section = documentOf((await get(port)).data).querySelectorAll('section')[1];
+		assert.equal(section.querySelector('h2').textContent, 'laptop');
+		assert.equal(section.querySelectorAll(':scope > ul > li').length, 2);
+		const project = section.querySelector('li.project');
+		assert.equal(project.querySelector('.project-name').textContent, 'shop');
+		assert.equal(project.querySelector('a.peer-link').getAttribute('href'), 'https://laptop.example.ts.net:8450');
+		assert.deepEqual([...project.querySelectorAll('.dot')].map((d) => d.getAttribute('aria-label')), ['online', 'offline']);
+	} finally {
+		close();
+		peer.srv.close();
 	}
 });
 

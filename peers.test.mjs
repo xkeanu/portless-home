@@ -167,3 +167,14 @@ test('parsePeers returns an empty list for corrupt or wrongly shaped files', () 
 	assert.deepEqual(parsePeers('{"peers": "https://mac.example.ts.net"}'), []);
 	assert.deepEqual(parsePeers('null'), []);
 });
+
+test('parsePeerSnapshot keeps a trimmed project name and drops non-string ones', () => {
+	const snap = parsePeerSnapshot({ device: 'd', apps: [
+		{ hostname: 'web.shop.localhost', project: ' shop ', up: true },
+		{ hostname: 'x.localhost', project: 42 },
+		{ hostname: 'y.localhost', project: '   ' },
+	] }, 'fallback');
+	assert.equal(snap.apps[0].project, 'shop');
+	assert.equal('project' in snap.apps[1], false);
+	assert.equal('project' in snap.apps[2], false);
+});

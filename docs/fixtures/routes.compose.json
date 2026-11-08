@@ -1,0 +1,26 @@
+[
+	{
+		"hostname": "blog.localhost",
+		"pid": 40001,
+		"port": 4000,
+		"tailscaleUrl": "https://mini.example.ts.net:8443"
+	},
+	{
+		"hostname": "api.shop.localhost",
+		"port": 14279,
+		"pid": 0,
+		"registeredAt": 1794146890935
+	},
+	{
+		"hostname": "web.shop.localhost",
+		"port": 14117,
+		"pid": 0,
+		"registeredAt": 1794146890937
+	},
+	{
+		"hostname": "grafana.localhost",
+		"port": 3000,
+		"pid": 0,
+		"registeredAt": 1794146923046
+	}
+]

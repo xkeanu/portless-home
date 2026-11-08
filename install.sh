@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # A checkout needs its contributor build before it can be installed. Check every
 # input before creating the install directory or touching an existing service.
-for FILE in server.mjs render.mjs i18n.mjs peers.mjs menubar.mjs live.mjs launch.mjs external.mjs \
+for FILE in server.mjs render.mjs i18n.mjs peers.mjs menubar.mjs live.mjs launch.mjs external.mjs projects.mjs \
 	accounts.mjs accounts-http.mjs accounts-cli.mjs account-store.mjs account-providers.mjs \
 	account-processes.mjs account-routing.mjs account-sync.mjs \
 	dist/ui-server.mjs dist/ui.js dist/ui.css; do
@@ -41,7 +41,7 @@ esac
 NODE_BIN="$(command -v node)" || { echo "node not found on PATH."; exit 1; }
 
 mkdir -p "$INSTALL_DIR/dist"
-cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$SCRIPT_DIR/i18n.mjs" "$SCRIPT_DIR/peers.mjs" "$SCRIPT_DIR/menubar.mjs" "$SCRIPT_DIR/live.mjs" "$SCRIPT_DIR/launch.mjs" "$SCRIPT_DIR/external.mjs" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$SCRIPT_DIR/i18n.mjs" "$SCRIPT_DIR/peers.mjs" "$SCRIPT_DIR/menubar.mjs" "$SCRIPT_DIR/live.mjs" "$SCRIPT_DIR/launch.mjs" "$SCRIPT_DIR/external.mjs" "$SCRIPT_DIR/projects.mjs" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/accounts.mjs" "$SCRIPT_DIR/accounts-http.mjs" "$SCRIPT_DIR/accounts-cli.mjs" \
 	"$SCRIPT_DIR/account-store.mjs" "$SCRIPT_DIR/account-providers.mjs" "$SCRIPT_DIR/account-processes.mjs" \
 	"$SCRIPT_DIR/account-routing.mjs" "$SCRIPT_DIR/account-sync.mjs" "$INSTALL_DIR/"

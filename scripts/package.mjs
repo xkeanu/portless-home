@@ -28,6 +28,7 @@ export const releaseFiles = [
 	'live.mjs',
 	'launch.mjs',
 	'external.mjs',
+	'projects.mjs',
 	'accounts.mjs',
 	'accounts-http.mjs',
 	'accounts-cli.mjs',

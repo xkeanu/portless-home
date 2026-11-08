@@ -21,7 +21,7 @@ if ([version](& $Node --version).TrimStart('v') -lt [version]'20.6') { Write-Hos
 # A checkout needs its contributor build before it can be installed. Check every
 # input before creating the install directory or replacing an existing task.
 $RequiredFiles = @(
-	'server.mjs', 'render.mjs', 'i18n.mjs', 'peers.mjs', 'menubar.mjs', 'live.mjs', 'launch.mjs', 'external.mjs',
+	'server.mjs', 'render.mjs', 'i18n.mjs', 'peers.mjs', 'menubar.mjs', 'live.mjs', 'launch.mjs', 'external.mjs', 'projects.mjs',
 	'accounts.mjs', 'accounts-http.mjs', 'accounts-cli.mjs', 'account-store.mjs',
 	'account-providers.mjs', 'account-processes.mjs', 'account-routing.mjs', 'account-sync.mjs',
 	'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css'
@@ -35,7 +35,7 @@ foreach ($File in $RequiredFiles) {
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'dist') | Out-Null
-Copy-Item -Path "$PSScriptRoot\server.mjs", "$PSScriptRoot\render.mjs", "$PSScriptRoot\i18n.mjs", "$PSScriptRoot\peers.mjs", "$PSScriptRoot\menubar.mjs", "$PSScriptRoot\live.mjs", "$PSScriptRoot\launch.mjs", "$PSScriptRoot\external.mjs" -Destination $InstallDir
+Copy-Item -Path "$PSScriptRoot\server.mjs", "$PSScriptRoot\render.mjs", "$PSScriptRoot\i18n.mjs", "$PSScriptRoot\peers.mjs", "$PSScriptRoot\menubar.mjs", "$PSScriptRoot\live.mjs", "$PSScriptRoot\launch.mjs", "$PSScriptRoot\external.mjs", "$PSScriptRoot\projects.mjs" -Destination $InstallDir
 Copy-Item -Path "$PSScriptRoot\accounts.mjs", "$PSScriptRoot\accounts-http.mjs", "$PSScriptRoot\accounts-cli.mjs", "$PSScriptRoot\account-store.mjs", "$PSScriptRoot\account-providers.mjs", "$PSScriptRoot\account-processes.mjs", "$PSScriptRoot\account-routing.mjs", "$PSScriptRoot\account-sync.mjs" -Destination $InstallDir
 Copy-Item -Path "$PSScriptRoot\dist\ui-server.mjs", "$PSScriptRoot\dist\ui.js", "$PSScriptRoot\dist\ui.css" -Destination (Join-Path $InstallDir 'dist')
 
