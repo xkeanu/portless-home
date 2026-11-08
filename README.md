@@ -583,7 +583,8 @@ not provide archive writers. The manifest order, file timestamps, archive
 ownership, gzip timestamp, and stripped zip metadata keep repeated builds on
 the release runner reproducible.
 
-The tag workflow also zips the ad-hoc-signed `PortlessHome.app` with
-`ditto -c -k --keepParent` and publishes it as `PortlessHome-vX.Y.Z-macos.zip`
+The tag workflow also builds `PortlessHome.app` as a universal binary (Apple
+Silicon and Intel), zips the ad-hoc-signed bundle with
+`ditto -c -k --keepParent`, and publishes it as `PortlessHome-vX.Y.Z-macos.zip`
 next to the Node archives. Every release is a pre-release until signed and
 notarized macOS builds and a Homebrew cask land (#34).

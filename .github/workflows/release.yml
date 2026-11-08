@@ -72,10 +72,14 @@ jobs:
           persist-credentials: false
       - name: build the native companion
         working-directory: macos
+        # Universal binary: the runner is ARM64, but Intel Macs download it too.
+        env:
+          SWIFT_BUILD_FLAGS: --arch arm64 --arch x86_64
         run: |
           swift test
           ./build.sh
           test -x dist/PortlessHome.app/Contents/MacOS/PortlessHome
+          lipo dist/PortlessHome.app/Contents/MacOS/PortlessHome -verify_arch arm64 x86_64
       - name: zip the ad-hoc-signed app
         working-directory: macos
         run: |
