@@ -4,14 +4,15 @@
 // in both directions: snapshot() produces it, parsePeerSnapshot() checks it.
 // Peer responses are untrusted input.
 import { readFileSync } from 'node:fs';
-import { displayName } from './render.mjs';
+import { appFields } from './projects.mjs';
 
-// JSON twin of the cards: { device, apps: [{ hostname, label, tailscaleUrl?, up }] }.
+// JSON twin of the cards: { device, apps: [{ hostname, label, project?, tailscaleUrl?, up }] }.
+// `project` names the Compose project a service belongs to (see projects.mjs).
 export const snapshot = (device, routes, up, names) => ({
 	device,
 	apps: routes.map((r, i) => ({
 		hostname: r.hostname,
-		label: displayName(r.hostname, names),
+		...appFields(r, names),
 		...(r.tailscaleUrl ? { tailscaleUrl: r.tailscaleUrl } : {}),
 		up: up[i],
 	})),
@@ -33,6 +34,8 @@ const parseApp = (a) => {
 	if (!a || typeof a.hostname !== 'string' || a.hostname.length > 253) return null;
 	const app = { hostname: a.hostname };
 	if (typeof a.label === 'string') app.label = a.label.slice(0, MAX_LABEL);
+	const project = typeof a.project === 'string' ? a.project.trim().slice(0, MAX_LABEL) : '';
+	if (project) app.project = project;
 	// Only https links: a peer's tailscaleUrl lands in an href, and esc() does
 	// not stop javascript: or data: schemes.
 	if (typeof a.tailscaleUrl === 'string' && /^https:\/\//i.test(a.tailscaleUrl)) app.tailscaleUrl = a.tailscaleUrl;

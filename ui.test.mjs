@@ -89,6 +89,27 @@ test('SSR escapes user data and hydrates without replacing the local controls', 
 	} finally { ui.close(); }
 });
 
+test('Compose projects hydrate as one card per project, locally and for peers', async () => {
+	const service = (hostname, extra) => ({ hostname, label: hostname.split('.')[0], project: 'shop', up: true, ...extra });
+	const shop = { name: 'shop', services: [service('web.shop.localhost'), service('api.shop.localhost', { up: false })] };
+	const peerShop = { name: 'shop', services: [service('web.shop.localhost', { tailscaleUrl: 'https://peer.ts.net:8450' })] };
+	const ui = await mount({
+		routes: [route('blog.localhost')],
+		projects: [shop],
+		peers: [{ device: 'peer', apps: [], projects: [peerShop] }],
+	});
+	try {
+		const [local, peer] = ui.document.querySelectorAll('section');
+		assert.equal(local.querySelectorAll('li.project').length, 1);
+		assert.deepEqual([...local.querySelectorAll('li.project .name')].map((n) => n.textContent), ['web', 'api']);
+		assert.deepEqual([...local.querySelectorAll('li.project .dot')].map((d) => d.getAttribute('aria-label')), ['online', 'offline']);
+		assert.equal(local.querySelectorAll('li.project button').length, 0);
+		assert.equal(peer.querySelector('li.project a.peer-link').getAttribute('href'), 'https://peer.ts.net:8450');
+		assert.equal(ui.document.querySelectorAll('button.name').length, 1);
+		assert.deepEqual(ui.errors, []);
+	} finally { ui.close(); }
+});
+
 test('registered apps share the local list before peers and suppress the local empty state', async () => {
 	const registered = [{ hostname: 'stopped.localhost', label: 'Stopped app', state: 'stopped' }];
 	for (const peers of [[], [{ device: 'remote', apps: [] }]]) {

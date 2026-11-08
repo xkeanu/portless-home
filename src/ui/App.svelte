@@ -168,10 +168,35 @@
 	</li>
 {/snippet}
 
+{#snippet health(app)}<span class:up={app.up} class="dot" role="img" aria-label={app.up ? 'online' : 'offline'}></span>{/snippet}
+
+<!-- A Compose project: one card, one row per service with its own health dot. -->
+{#snippet project(group)}
+	<li class="project">
+		<span class="project-name">{group.name}</span>
+		<ul class="services" aria-label={group.name}>
+			{#each group.services as service, index (index)}
+				<li class:local={!service.tailscaleUrl}>
+					{#if service.tailscaleUrl}
+						<a class="peer-link" href={service.tailscaleUrl}>
+							<span class="row">{@render health(service)}<span class="name">{label(service)}</span></span>
+							<span class="url">{service.tailscaleUrl.replace('https://', '')}</span>
+						</a>
+					{:else}
+						<span class="row">{@render health(service)}<span class="name">{label(service)}</span></span>
+						<span class="url">{t.local} — {service.hostname}</span>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	</li>
+{/snippet}
+
 {#snippet localApps()}
-	{#if routes.length || model.registered.length}
+	{#if routes.length || model.projects?.length || model.registered.length}
 		<ul>
 			{#each routes as route (route.hostname)}{@render card(route, true)}{/each}
+			{#each model.projects ?? [] as group (group.name)}{@render project(group)}{/each}
 			{#each model.registered as app (app.hostname)}
 				{@const state = startStates[app.hostname] ?? app.state}
 				<li class="registered">
@@ -223,8 +248,11 @@
 			{#if peer}
 				<section>
 					<h2>{peer.device}</h2>
-					{#if peer.apps.length}
-						<ul>{#each peer.apps as app, appIndex (appIndex)}{@render card(app, false)}{/each}</ul>
+					{#if peer.apps.length || peer.projects?.length}
+						<ul>
+							{#each peer.apps as app, appIndex (appIndex)}{@render card(app, false)}{/each}
+							{#each peer.projects ?? [] as group, groupIndex (groupIndex)}{@render project(group)}{/each}
+						</ul>
 					{:else}<p class="empty">{t.peerEmpty}</p>{/if}
 				</section>
 			{/if}
@@ -247,6 +275,10 @@
 	li{list-style:none;position:relative}
 	li:not(.registered){display:flex;flex-direction:column;gap:2px;padding:14px 16px;margin-bottom:8px;background:#1a1a20;border:1px solid #2a2a32;border-radius:10px}
 	li.local{opacity:.5}
+	.project-name{color:#8a8a94;font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase}
+	.services{margin:6px 0 0}
+	li.project .services li{padding:10px 0 0;margin:0;background:none;border:0;border-radius:0}
+	li.project .services li+li{margin-top:10px;border-top:1px solid #2a2a32}
 	li.linked:active{background:#22222a}
 	.row{display:flex;align-items:center;gap:8px}
 	.dot{width:8px;height:8px;border-radius:50%;background:#4a4a54;flex:none}
