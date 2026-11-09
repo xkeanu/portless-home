@@ -9,6 +9,8 @@
 	let beforeDrag = '';
 	let saving = Promise.resolve();
 	const t = $derived(model.t);
+	// Read-only viewers get the same cards without rename, pin and reorder.
+	const canEdit = $derived(model.viewer?.canEdit !== false);
 	const label = (route) => route.label || route.hostname.replace(/\.localhost$/, '');
 
 	const pinnedHosts = () => routes.filter((route) => route.pinned).map((route) => route.hostname);
@@ -195,7 +197,7 @@
 {#snippet localApps()}
 	{#if routes.length || model.projects?.length || model.registered.length}
 		<ul>
-			{#each routes as route (route.hostname)}{@render card(route, true)}{/each}
+			{#each routes as route (route.hostname)}{@render card(route, canEdit)}{/each}
 			{#each model.projects ?? [] as group (group.name)}{@render project(group)}{/each}
 			{#each model.registered as app (app.hostname)}
 				{@const state = startStates[app.hostname] ?? app.state}
@@ -232,6 +234,9 @@
 {:else}
 <main>
 	<h1>{t.title}</h1>
+	{#if model.viewer?.login || !canEdit}
+		<p class="viewer">{#if model.viewer?.login}{t.viewingAs} <span class="login">{model.viewer.login}</span>{/if}{#if !canEdit}{model.viewer?.login ? ' · ' : ''}{t.readOnly}{/if}</p>
+	{/if}
 	{#if model.accountManagementEnabled === true}
 		<p class="account-management"><a href="/accounts" lang="en">CLI accounts</a></p>
 	{/if}
@@ -298,6 +303,8 @@
 	.peer-link{display:flex;flex-direction:column;gap:2px}
 	.external-apps h2{color:#8a8a94}
 	.external-note{color:#8a8a94;font-size:13px;margin:0 0 12px}
+	.viewer{color:#8a8a94;font-size:12px;margin:-4px 0 16px;overflow-wrap:anywhere}
+	.viewer .login{font-family:ui-monospace,monospace}
 	.account-management{font-size:13px;margin:12px 0 20px}
 	.account-management a{color:#a4a4ae;text-underline-offset:3px}
 	.account-management a:hover{color:#e6e6ea}

@@ -35,9 +35,13 @@ configured peers server-to-server for `GET /api/routes`. Browser card links go
 directly to each app's Tailscale URL. `/api/routes` contains only the local
 machine's routes, and peer cards are read-only.
 
-There is no application authentication, requester-aware peer filtering, or
-per-viewer filtering in `server.mjs`/`peers.mjs`; `/rename` and `/layout` rely
-on network reachability. [fetchPeer()](../peers.mjs) sends only an `Accept` header, so it
+There is no requester-aware peer filtering or per-viewer filtering in
+`server.mjs`/`peers.mjs`. **Update (#48, phase 1):** writes are now limited by
+Tailscale identity. With owners listed in `access.json`, only those logins and
+this device's localhost can rename or reorder; every other Serve request is
+read-only (see [access.mjs](../access.mjs) and the README section "Owners and
+viewers"). Without owners, `/rename` and `/layout` still rely on network
+reachability. [fetchPeer()](../peers.mjs) sends only an `Accept` header, so it
 does not forward the browser viewer's identity to peer instances. **Inference:**
 every principal allowed to reach this Serve endpoint can read the complete
 rendered directory and its available peer summaries, even where that viewer
@@ -104,9 +108,8 @@ headers](https://tailscale.com/docs/features/tailscale-serve#identity-headers)
    different access policies and support requirements.
 2. If any external viewer can reach the directory, which peer sections and app
    URLs may they see? The existing aggregate peer fetch cannot answer that.
-3. Should viewers be read-only? If yes, add an authorization rule before
-   recommending node sharing or Funnel; current `POST /rename` and `/layout`
-   are network-authorized only.
+3. Should viewers be read-only? Decided in #48: yes, for every login not listed
+   as an owner and for Serve requests without identity.
 4. Is public access actually needed? If yes, define real application auth and
    CSRF/write policy before Funnel; Tailnet identity is unavailable there.
 
@@ -121,13 +124,27 @@ evidence that the proposed configuration works.
    URL and each expected app port from an owner-tailnet client.
 3. Share the host to a test external user; accept the invite; use the host's
    full `<host>.<owner-tailnet>.ts.net` name and test permitted/denied ports.
-4. Confirm the external user sees no unintended peer summaries or app links,
-   and verify whether `POST /rename` and `POST /layout` are acceptable.
-5. Switch the host to a second saved account and confirm the first directory
+4. Confirm the external user sees no unintended peer summaries or app links.
+   Until per-viewer filtering ships, they see every peer summary.
+5. Check owner-only edits (#48). Confirm `tailscale version` on the host is
+   1.92 or later and list your own login in `~/.portless-home/access.json`.
+   - From your own device through the Serve URL: the page reads "Viewing as
+     <your login>", and rename, pin and reorder work.
+   - As the shared test user: the page reads "Viewing as <their login> ·
+     read-only" and shows no rename, pin or reorder controls. In the browser
+     console, `fetch('/rename', { method: 'POST', body: '{}' })` returns 403.
+   - From a tagged device: `curl -X POST https://<host>.<tailnet>.ts.net/rename -d '{}'`
+     returns 403 and the page reads "read-only".
+   - On the host: `curl -X POST http://127.0.0.1:5995/rename -H 'Tailscale-User-Login: <your login>' -d '{}'`
+     is judged as that login, not as this device; without the header the
+     request is trusted as before (400 for the empty body).
+   - Remove the owners and confirm the server logs the one-time hint on the
+     next tailnet request and that the shared user can edit again.
+6. Switch the host to a second saved account and confirm the first directory
    URL/peer set is no longer assumed reachable; switch back and recheck.
-6. If evaluating declarative sharing, validate both policies, limits, and
+7. If evaluating declarative sharing, validate both policies, limits, and
    revocation with two test tailnets before relying on alpha behavior.
-7. If evaluating Funnel, verify unauthenticated public read and write behavior
+8. If evaluating Funnel, verify unauthenticated public read and write behavior
    explicitly; do not expose real project routes until application auth exists.
 
 ## Recommendation for this issue
