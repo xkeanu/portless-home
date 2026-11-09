@@ -45,10 +45,11 @@ reachability. [fetchPeer()](../peers.mjs) sends only an `Accept` header, so it
 does not forward the browser viewer's identity to peer instances. **Inference:**
 every principal allowed to reach this Serve endpoint can read the complete
 rendered directory and its available peer summaries, even where that viewer
-cannot open a displayed peer-app link directly, and can invoke those local write
-endpoints. Tailscale Serve does forward authenticated identity headers for
-tailnet traffic, including accepted node shares, but this implementation does
-not inspect them. [Serve identity
+cannot open a displayed peer-app link directly. Without configured owners, they
+can also invoke the local write endpoints; with owners, only those logins and
+this device's localhost can. Tailscale Serve forwards authenticated identity
+headers for tailnet traffic, including accepted node shares; `access.mjs`
+reads `Tailscale-User-Login` to decide write access only. [Serve identity
 headers](https://tailscale.com/docs/features/tailscale-serve#identity-headers)
 
 ## Decision matrix
@@ -135,9 +136,10 @@ evidence that the proposed configuration works.
      console, `fetch('/rename', { method: 'POST', body: '{}' })` returns 403.
    - From a tagged device: `curl -X POST https://<host>.<tailnet>.ts.net/rename -d '{}'`
      returns 403 and the page reads "read-only".
-   - On the host: `curl -X POST http://127.0.0.1:5995/rename -H 'Tailscale-User-Login: <your login>' -d '{}'`
-     is judged as that login, not as this device; without the header the
-     request is trusted as before (400 for the empty body).
+   - On the host: `curl -X POST http://127.0.0.1:5995/rename -H 'Tailscale-User-Login: someone-else@example.com' -d '{}'`
+     returns 403: a loopback request with an identity header is judged by that
+     login, not trusted as this device. Without the header it returns 400 (the
+     empty body passed the gate).
    - Remove the owners and confirm the server logs the one-time hint on the
      next tailnet request and that the shared user can edit again.
 6. Switch the host to a second saved account and confirm the first directory
@@ -150,7 +152,9 @@ evidence that the proposed configuration works.
 ## Recommendation for this issue
 
 Keep the current deployment model. Treat individual sharing as an option for
-trusted viewers who may see the full inventory and modify local names/pins.
+trusted viewers who may see the full inventory. List owners in `access.json`
+first so shared viewers cannot modify local names or pins; without owners, they
+can.
 Design viewer authorization before offering isolated organization views or
 public access. These are follow-up product decisions, not implementation work
 or acceptance requirements for this research issue.
