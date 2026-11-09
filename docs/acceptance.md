@@ -7,6 +7,7 @@ and amber actions in the existing components.
 | Journey | Start | Success signal | Proof |
 | --- | --- | --- | --- |
 | Open local, peer, and external apps | `/` | Correct links, health and local-only actions | `node --test ui.test.mjs server.test.mjs` |
+| Owner-only edits (#48) | `/` via Serve | Owners and localhost edit; other logins and Serve without identity read, with no edit controls and 403 on every POST/PUT/DELETE | `node --test access.test.mjs`; `node scripts/capture-directory.mjs <dir>` (viewer-*.png) |
 | Detect and save current CLI logins | `/accounts` | Unsaved A is visible; saving A, signing into B and returning preserves A and offers Save for B; saving B retains both | `node --test accounts.test.mjs accounts-http.test.mjs accounts-ui.test.mjs`; browser capture command below |
 | Switch or forget a saved login | `/accounts` | Explicit confirmation; busy switches refused; manual relaunch guidance; forgetting leaves the CLI signed in | Same account tests and browser keyboard checks |
 | Inspect quota and configure routing | `/accounts` | Freshness is visible beside quotas; current and recommended states stay distinct; settings save correctly | `node --test accounts-ui.test.mjs account-routing.test.mjs` |

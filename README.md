@@ -548,6 +548,48 @@ For access across tailnets or outside Tailscale, see the
 entries by viewer: anyone with access can see the peer summaries the server
 fetches, even when they cannot open those apps themselves.
 
+## Owners and viewers
+
+Anyone who can open the directory can rename and reorder its apps until you
+name its owners. List your Tailscale logins in `~/.portless-home/access.json`:
+
+```json
+{ "owners": ["alice@example.com"] }
+```
+
+The file is read on every request; `PORTLESS_ACCESS` points the server at a
+different one. Logins match case-insensitively, and non-ASCII logins work as
+Tailscale shows them. If the file exists but cannot be read or parsed, or
+`owners` is not a list of logins, tailnet viewers are read-only (this device's
+localhost still edits) and the server logs the problem once.
+
+| Who | Can |
+| --- | --- |
+| This device, on `127.0.0.1` or `localhost` | Everything, as before |
+| An owner login, through `tailscale serve` | Rename, pin and reorder |
+| Any other login, or a request with no login (tagged devices, Tailscale before 1.92) | Read the page, `/api/routes` and `/events`. Every POST, PUT and DELETE returns 403 |
+
+Starting registered apps and account management stay on this device's
+localhost address for everyone, owners included. A browser request sent from
+another site's page is refused for everyone, so a page you visit cannot edit
+the directory with your identity.
+
+The page shows "Viewing as <login>" when Tailscale identified the viewer and
+"read-only" when edits are refused; read-only viewers get no rename, pin or
+reorder controls.
+
+Identity comes from the `Tailscale-User-Login` header that `tailscale serve`
+(v1.92 or later) adds to tailnet requests, after it strips any copy the client
+sent ([Tailscale docs](https://tailscale.com/kb/1312/serve)). That is safe to
+trust only because portless-home listens on `127.0.0.1`: do not expose port
+5995 any other way. A request that reaches loopback with an identity header is
+judged by that login, never trusted as this device. Funnel traffic carries no
+identity, so it would be read-only; public access is not supported.
+
+With no owners listed, nothing changes, and the server logs a one-time hint
+when the first tailnet request arrives. Peers fetch only `GET /api/routes`, so
+owner settings never block one device's directory from listing another's apps.
+
 ## Uninstall
 
 ```sh

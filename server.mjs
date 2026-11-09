@@ -16,6 +16,7 @@ import { readExternalApps } from './external.mjs';
 import { appFields, groupProjects } from './projects.mjs';
 import { createAccountManager } from './accounts.mjs';
 import { accountHttp } from './accounts-http.mjs';
+import { readAccess, viewer, mayWrite } from './access.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
 const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
@@ -23,6 +24,7 @@ const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 
 const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.portless-home', 'peers.json');
 const APPS = process.env.PORTLESS_APPS || join(homedir(), '.portless-home', 'apps.json');
 const EXTERNAL_APPS = process.env.PORTLESS_EXTERNAL_APPS || join(homedir(), '.portless-home', 'external-apps.json');
+const ACCESS = process.env.PORTLESS_ACCESS || join(homedir(), '.portless-home', 'access.json');
 const ACCOUNTS = process.env.PORTLESS_ACCOUNTS || join(homedir(), '.portless-home', 'accounts', 'config.json');
 const accounts = createAccountManager({ configPath: ACCOUNTS });
 const accountRequest = accountHttp(accounts, (model) => page({ view: 'accounts', accounts: model, t: { ...strings('en'), title: 'AI accounts' } }));
@@ -221,6 +223,8 @@ const assets = new Map([
 ]);
 
 export const handler = async (req, res) => {
+	const who = viewer(req, readAccess(ACCESS));
+	if (req.method !== 'GET' && req.method !== 'HEAD' && !mayWrite(req, who)) return fail(res, 403);
 	if (await accountRequest(req, res)) return;
 	if (req.url?.startsWith('/assets/')) {
 		const asset = assets.get(req.url);
@@ -260,6 +264,7 @@ export const handler = async (req, res) => {
 		external: readExternalApps(EXTERNAL_APPS),
 		peers: peers.map((peer) => peer && { device: peer.device, ...groupProjects(peer.apps) }),
 		tailnetUp: hasTailnetAddr(networkInterfaces()), t, stamp: stamp(text),
+		viewer: who,
 	};
 	if (localRequest(req)) {
 		try { model.accountManagementEnabled = accounts.settings().enabled === true; } catch {}

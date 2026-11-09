@@ -20,7 +20,7 @@ const deadPort = await listen(closed);
 await new Promise((done) => closed.close(done));
 const fixture = JSON.parse(readFileSync(new URL('../docs/fixtures/routes.compose.json', import.meta.url), 'utf8'));
 const routes = fixture.map((r) => ({ ...r, pid: r.pid && process.pid, port: r.hostname.startsWith('api.') ? deadPort : livePort }));
-for (const [key, value] of Object.entries({ ROUTES: routes, NAMES: {}, LAYOUT: {}, PEERS: {}, APPS: [], EXTERNAL_APPS: {}, ACCOUNTS: {} })) {
+for (const [key, value] of Object.entries({ ROUTES: routes, NAMES: {}, LAYOUT: {}, PEERS: {}, APPS: [], EXTERNAL_APPS: {}, ACCOUNTS: {}, ACCESS: { owners: ['owner@example.com'] } })) {
 	const path = join(scratch, `${key}.json`);
 	writeFileSync(path, JSON.stringify(value));
 	process.env[`PORTLESS_${key}`] = path;
@@ -61,6 +61,21 @@ const browserCode = `async (page) => {
 		check(!await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), scheme + ' overflows at ' + width);
 		await page.screenshot({ path: output + '/compose-' + scheme + '-' + width + '.png', fullPage: true });
 	}
+	// Viewers as Tailscale Serve presents them: forwarded, with or without a login (#48).
+	for (const [name, login, canEdit] of [['owner', 'owner@example.com', true], ['viewer', 'friend@example.com', false], ['no-identity', '', false]]) {
+		await page.setExtraHTTPHeaders({ 'x-forwarded-for': '100.64.0.2', ...(login ? { 'tailscale-user-login': login } : {}) });
+		for (const scheme of ['light', 'dark']) {
+			await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+			await page.setViewportSize({ width: 390, height: 844 });
+			await page.goto(url);
+			await page.locator('li.project').waitFor();
+			check((await page.locator('.pin').count() > 0) === canEdit, name + ' edit controls');
+			check((await page.locator('.viewer').textContent()).includes(canEdit ? 'Viewing as' : 'read-only'), name + ' viewer line');
+			check(!await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), name + ' overflows');
+			await page.screenshot({ path: output + '/viewer-' + name + '-' + scheme + '-390.png', fullPage: true });
+		}
+	}
+	await page.setExtraHTTPHeaders({});
 	check(errors.length === 0, errors.join('; '));
 	return { pageErrors: errors };
 }`;

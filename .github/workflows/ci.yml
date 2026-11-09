@@ -36,6 +36,7 @@ jobs:
           node --check launch.mjs
           node --check external.mjs
           node --check projects.mjs
+          node --check access.mjs
           node --check accounts.mjs
           node --check accounts-http.mjs
           node --check accounts-cli.mjs
@@ -114,12 +115,13 @@ jobs:
           if ((Get-ScheduledTask portless-home).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
           (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/api/menubar).Content
           $installDir = "$env:USERPROFILE\.portless-home"
-          foreach ($file in 'external.mjs', 'projects.mjs', 'accounts.mjs', 'accounts-http.mjs', 'accounts-cli.mjs', 'account-store.mjs', 'account-providers.mjs', 'account-processes.mjs', 'account-routing.mjs', 'account-sync.mjs', 'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css') {
+          foreach ($file in 'external.mjs', 'projects.mjs', 'access.mjs', 'accounts.mjs', 'accounts-http.mjs', 'accounts-cli.mjs', 'account-store.mjs', 'account-providers.mjs', 'account-processes.mjs', 'account-routing.mjs', 'account-sync.mjs', 'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css') {
             if (-not (Test-Path "$installDir\$file")) { throw "installed asset missing: $file" }
           }
           $settings = Get-Content "$installDir\service.env"
           if ($settings -notcontains "PORTLESS_APPS=$installDir\apps.json") { throw 'registry path missing from service.env' }
           if ($settings -notcontains "PORTLESS_EXTERNAL_APPS=$installDir\external-apps.json") { throw 'external app config path missing from service.env' }
+          if ($settings -notcontains "PORTLESS_ACCESS=$installDir\access.json") { throw 'access config path missing from service.env' }
           if ($settings -notcontains "PORTLESS_ACCOUNTS=$installDir\accounts\config.json") { throw 'account config path missing from service.env' }
           if ($settings -notcontains "PORTLESS_ACCOUNT_HOME=$env:USERPROFILE") { throw 'native account home missing from service.env' }
           $registry = @{ enabled = $true; apps = @(@{ hostname = 'fixture.localhost'; cwd = $installDir; command = 'node --version' }) } | ConvertTo-Json -Depth 3
