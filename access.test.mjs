@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
-import { readAccess, viewer, mayWrite } from './access.mjs';
+import { readAccess, viewer, mayWrite, decodeLogin } from './access.mjs';
 
 const OWNER = 'owner@example.com';
 const FRIEND = 'friend@example.com';
@@ -52,14 +52,32 @@ const directory = async (t) => {
 
 const fakeReq = (headers, remoteAddress = '127.0.0.1') => ({ headers, socket: { remoteAddress, localPort: 5995 } });
 
-test('readAccess normalizes owner logins and treats a missing or invalid file as no owners', () => {
-	owners([' Owner@Example.com ', '', 42, 'x'.repeat(300)]);
-	assert.deepEqual(readAccess(join(dir, 'ACCESS.json')), { owners: [OWNER] });
+test('readAccess: no file or no owners key is unconfigured; anything malformed is invalid', () => {
+	const read = (name, text) => {
+		writeFileSync(join(dir, name), text);
+		return readAccess(join(dir, name));
+	};
+	assert.deepEqual(read('ok.json', JSON.stringify({ owners: [' Owner@Example.com '] })), { owners: [OWNER] });
 	assert.deepEqual(readAccess(join(dir, 'missing.json')), { owners: [] });
-	writeFileSync(join(dir, 'bad.json'), '{');
-	assert.deepEqual(readAccess(join(dir, 'bad.json')), { owners: [] });
-	writeFileSync(join(dir, 'null.json'), 'null');
-	assert.deepEqual(readAccess(join(dir, 'null.json')), { owners: [] });
+	assert.deepEqual(read('empty.json', '{}'), { owners: [] });
+	const invalid = { owners: [], invalid: true };
+	assert.deepEqual(read('comma.json', '{"owners":["owner@example.com"],}'), invalid);
+	assert.deepEqual(read('null.json', 'null'), invalid);
+	assert.deepEqual(read('string.json', '{"owners":"owner@example.com"}'), invalid);
+	assert.deepEqual(read('blank.json', '{"owners":["owner@example.com",""]}'), invalid);
+	assert.deepEqual(read('number.json', '{"owners":[42]}'), invalid);
+	assert.deepEqual(read('long.json', JSON.stringify({ owners: ['x'.repeat(300)] })), invalid);
+});
+
+test('decodeLogin reads the RFC 2047 words Serve sends for non-ASCII logins', () => {
+	assert.equal(decodeLogin('=?utf-8?q?jos=C3=A9@example.com?='), 'josé@example.com');
+	assert.equal(decodeLogin('=?UTF-8?Q?Jos=C3=A9_x@example.com?='), 'josé x@example.com');
+	assert.equal(decodeLogin('=?utf-8?q?jos=C3?= =?utf-8?q?=A9@example.com?='), 'josé@example.com');
+	assert.equal(decodeLogin(' Owner@Example.com '), OWNER);
+	assert.equal(decodeLogin('=?utf-8?q?bad=ZZ?='), '');
+	assert.equal(decodeLogin('=?utf-8?q?=FF?='), '');
+	assert.equal(decodeLogin('=?iso-8859-1?q?jos=E9?='), '');
+	assert.equal(decodeLogin(undefined), '');
 });
 
 test('viewer: loopback and owners edit; other logins and Serve without identity read', () => {
@@ -73,6 +91,11 @@ test('viewer: loopback and owners edit; other logins and Serve without identity 
 	assert.equal(viewer(fakeReq({ host: '127.0.0.1:5995', 'tailscale-user-login': FRIEND }), access).canEdit, false);
 	// With no owners configured, everyone keeps edit access as before.
 	assert.equal(viewer(fakeReq(serve(FRIEND)), { owners: [] }).canEdit, true);
+	// A broken access.json locks remote edits but never this device.
+	assert.equal(viewer(fakeReq(serve(FRIEND)), { owners: [], invalid: true }).canEdit, false);
+	assert.equal(viewer(fakeReq({ host: '127.0.0.1:5995' }), { owners: [], invalid: true }).canEdit, true);
+	// Serve Q-encodes a non-ASCII login; it still matches the owner.
+	assert.deepEqual(viewer(fakeReq(serve('=?utf-8?q?jos=C3=A9@example.com?=')), { owners: ['josé@example.com'] }), { login: 'josé@example.com', canEdit: true });
 });
 
 test('mayWrite refuses cross-site browser requests even for an owner', () => {
@@ -118,6 +141,15 @@ test('another login or Serve without identity gets 403 on every mutating route a
 	// Reads stay open to them, including the peer snapshot other devices fetch.
 	assert.equal((await send(port, 'GET', '/api/routes', serve(FRIEND))).status, 200);
 	assert.equal((await send(port, 'GET', '/', serve())).status, 200);
+});
+
+test('a malformed access.json makes tailnet viewers read-only; localhost still edits', async (t) => {
+	writeFileSync(join(dir, 'ACCESS.json'), '{"owners":["owner@example.com"],}');
+	const port = await directory(t);
+	assert.equal((await send(port, 'POST', '/rename', serve(FRIEND), { hostname: 'demo.localhost', label: 'x' })).status, 403);
+	assert.equal((await send(port, 'POST', '/rename', serve(OWNER), { hostname: 'demo.localhost', label: 'x' })).status, 403);
+	assert.equal(existsSync(join(dir, 'NAMES.json')), false);
+	assert.equal((await send(port, 'POST', '/rename', {}, { hostname: 'demo.localhost', label: 'Local' })).status, 204);
 });
 
 test('a cross-site browser request from the owner is refused', async (t) => {

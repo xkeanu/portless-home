@@ -558,7 +558,10 @@ name its owners. List your Tailscale logins in `~/.portless-home/access.json`:
 ```
 
 The file is read on every request; `PORTLESS_ACCESS` points the server at a
-different one. Logins match case-insensitively.
+different one. Logins match case-insensitively, and non-ASCII logins work as
+Tailscale shows them. If the file exists but cannot be read or parsed, or
+`owners` is not a list of logins, tailnet viewers are read-only (this device's
+localhost still edits) and the server logs the problem once.
 
 | Who | Can |
 | --- | --- |
