@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const accountFiles = ['accounts.mjs', 'accounts-http.mjs', 'accounts-cli.mjs', 'account-store.mjs', 'account-providers.mjs', 'account-processes.mjs', 'account-routing.mjs', 'account-sync.mjs'];
-const runtimeFiles = ['server.mjs', 'render.mjs', 'i18n.mjs', 'peers.mjs', 'menubar.mjs', 'live.mjs', 'launch.mjs', 'external.mjs', 'projects.mjs', ...accountFiles, 'dist/ui-server.mjs', 'dist/ui.js', 'dist/ui.css'];
+const runtimeFiles = ['server.mjs', 'render.mjs', 'i18n.mjs', 'peers.mjs', 'menubar.mjs', 'live.mjs', 'launch.mjs', 'external.mjs', 'projects.mjs', 'access.mjs', ...accountFiles, 'dist/ui-server.mjs', 'dist/ui.js', 'dist/ui.css'];
 
 function fixture(t, missing, windows) {
 	const root = mkdtempSync(join(tmpdir(), 'portless-install-preflight-'));

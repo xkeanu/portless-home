@@ -27,6 +27,7 @@ export const releaseFiles = [
 	'menubar.mjs',
 	'live.mjs',
 	'launch.mjs',
+	'access.mjs',
 	'external.mjs',
 	'projects.mjs',
 	'accounts.mjs',
