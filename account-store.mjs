@@ -68,7 +68,8 @@ export const readAccountSettings = (path) => {
 };
 
 const emptyState = () => ({ version: 1, accounts: [], remote: [], policy: { strategy: 'best', threshold: 90, auto: false }, pending: [] });
-const aad = Buffer.from('homeport account vault v1');
+// Part of the vault format: kept from the project's old name so existing vaults stay readable.
+const aad = Buffer.from('portless-home account vault v1');
 const maxVaultBytes = 8 * 1024 * 1024;
 
 export const accountVault = (directory) => {
