@@ -1,6 +1,6 @@
-# One portless-home directory across tailnets
+# One homeport directory across tailnets
 
-Research for [#13](https://github.com/xkeanu/portless-home/issues/13),
+Research for [#13](https://github.com/xkeanu/homeport/issues/13),
 dated 2026-09-26. Scope: documentation research only; no live
 tailnet or browser testing was performed. Tailscale behavior below is sourced
 from current official documentation. Statements marked **Inference** combine
@@ -8,7 +8,7 @@ that documentation with the current repository implementation.
 
 ## Short answer
 
-One installed `portless-home` instance belongs to whichever tailnet is active
+One installed `homeport` instance belongs to whichever tailnet is active
 on its host. It cannot be simultaneously reachable through two ordinary
 tailnets by switching accounts: Tailscale permits one active client account and
 does not transmit on multiple tailnets at once. [Fast user
@@ -128,7 +128,7 @@ evidence that the proposed configuration works.
 4. Confirm the external user sees no unintended peer summaries or app links.
    Until per-viewer filtering ships, they see every peer summary.
 5. Check owner-only edits (#48). Confirm `tailscale version` on the host is
-   1.92 or later and list your own login in `~/.portless-home/access.json`.
+   1.92 or later and list your own login in `~/.homeport/access.json`.
    - From your own device through the Serve URL: the page reads "Viewing as
      <your login>", and rename, pin and reorder work.
    - As the shared test user: the page reads "Viewing as <their login> ·

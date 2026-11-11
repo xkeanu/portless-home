@@ -1,10 +1,10 @@
-# portless-home
+# homeport
 
 A tiny home page for your tailnet: open `https://<device>.<tailnet>.ts.net`
 on your phone and see every dev app currently running through
 [portless](https://github.com/vercel-labs/portless), as tappable links.
 
-<img src="docs/screenshot.png" width="390" alt="portless-home directory page on a phone: app cards with green health dots">
+<img src="docs/screenshot.png" width="390" alt="homeport directory page on a phone: app cards with green health dots">
 
 Rendered from the example fixture (`docs/fixtures/routes.example.json`):
 fake app names and `example.ts.net`, not a real tailnet.
@@ -14,7 +14,7 @@ fake app names and `example.ts.net`, not a real tailnet.
 Portless's `--tailscale` mode shares each app on its own port of your
 device's MagicDNS name (`:443`, `:8443`, `:8444`, …), assigned by start
 order — so from another device you never know which port an app got.
-portless-home claims `:443` with a directory page instead. Unlike a
+homeport claims `:443` with a directory page instead. Unlike a
 dashboard built into portless (proposed in
 [portless#211](https://github.com/vercel-labs/portless/issues/211)), which
 would list one machine's apps on `localhost`, it is made for your phone and
@@ -68,16 +68,16 @@ Tagged archives already contain the UI and run with Node alone. Download the
 archive for the tag you want, verify its `*.sha256` file, then install it:
 
 ```sh
-curl -LO https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.tar.gz
-curl -LO https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.sha256
-grep '  portless-home-vX.Y.Z.tar.gz$' portless-home-vX.Y.Z.sha256 | shasum -a 256 -c -
-tar -xzf portless-home-vX.Y.Z.tar.gz
-cd portless-home-vX.Y.Z
+curl -LO https://github.com/xkeanu/homeport/releases/download/vX.Y.Z/homeport-vX.Y.Z.tar.gz
+curl -LO https://github.com/xkeanu/homeport/releases/download/vX.Y.Z/homeport-vX.Y.Z.sha256
+grep '  homeport-vX.Y.Z.tar.gz$' homeport-vX.Y.Z.sha256 | shasum -a 256 -c -
+tar -xzf homeport-vX.Y.Z.tar.gz
+cd homeport-vX.Y.Z
 ./install.sh
 ```
 
 Releases are marked as pre-releases. Each one also carries the macOS menu bar
-app as `PortlessHome-vX.Y.Z-macos.zip`; see [Native app](#native-app) for its
+app as `Homeport-vX.Y.Z-macos.zip`; see [Native app](#native-app) for its
 first-launch step.
 
 ### Build from source
@@ -85,8 +85,8 @@ first-launch step.
 Use a checkout when working on the project or tracking HEAD:
 
 ```sh
-git clone https://github.com/xkeanu/portless-home
-cd portless-home
+git clone https://github.com/xkeanu/homeport
+cd homeport
 npm ci
 npm run build
 ./install.sh
@@ -96,12 +96,18 @@ The install scripts check for the built files before they create a directory,
 replace a login service, or change Tailscale. Tagged archives already contain
 those files and need Node only at runtime.
 
-Either path copies the server to `~/.portless-home/`, registers a login service
-(launchd `sh.portless.home` on macOS, a systemd user service on Linux;
+Either path copies the server to `~/.homeport/`, registers a login service
+(launchd `sh.homeport` on macOS, a systemd user service on Linux;
 starts at login, restarts on crash, no sudo), and adds a persistent
 `tailscale serve` rule pinning it to `:443`. If Tailscale isn't running
 at install time, the script skips the serve rule and prints the command
 to run once it's up.
+
+Upgrading from `portless-home` (this project's old name)? Rerun the
+installer: it stops the old service and moves `~/.portless-home` to
+`~/.homeport`, keeping your config. With Homebrew, run
+`brew services stop portless-home`, `brew update`, `brew upgrade --fetch-HEAD`,
+`mv ~/.portless-home ~/.homeport`, then `brew services start homeport`.
 
 Custom port: `PORT=6001 ./install.sh` (then the serve rule targets that
 port).
@@ -115,27 +121,27 @@ the server now but skips start-at-login (and crash restarts). Rerun
 For a tagged archive:
 
 ```powershell
-Invoke-WebRequest https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.zip -OutFile portless-home-vX.Y.Z.zip
-Invoke-WebRequest https://github.com/xkeanu/portless-home/releases/download/vX.Y.Z/portless-home-vX.Y.Z.sha256 -OutFile portless-home-vX.Y.Z.sha256
-$expected = ((Get-Content portless-home-vX.Y.Z.sha256 | Where-Object { $_ -match '\.zip$' }).Split())[0]
-if ((Get-FileHash portless-home-vX.Y.Z.zip -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Checksum mismatch' }
-Expand-Archive portless-home-vX.Y.Z.zip
-Set-Location portless-home-vX.Y.Z
+Invoke-WebRequest https://github.com/xkeanu/homeport/releases/download/vX.Y.Z/homeport-vX.Y.Z.zip -OutFile homeport-vX.Y.Z.zip
+Invoke-WebRequest https://github.com/xkeanu/homeport/releases/download/vX.Y.Z/homeport-vX.Y.Z.sha256 -OutFile homeport-vX.Y.Z.sha256
+$expected = ((Get-Content homeport-vX.Y.Z.sha256 | Where-Object { $_ -match '\.zip$' }).Split())[0]
+if ((Get-FileHash homeport-vX.Y.Z.zip -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Checksum mismatch' }
+Expand-Archive homeport-vX.Y.Z.zip
+Set-Location homeport-vX.Y.Z
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 To build from source instead:
 
 ```powershell
-git clone https://github.com/xkeanu/portless-home
-cd portless-home
+git clone https://github.com/xkeanu/homeport
+cd homeport
 npm ci
 npm run build
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Same result, Windows-style: the server goes to `%USERPROFILE%\.portless-home\`
-and runs as a per-user scheduled task named `portless-home` (starts at
+Same result, Windows-style: the server goes to `%USERPROFILE%\.homeport\`
+and runs as a per-user scheduled task named `homeport` (starts at
 login, restarts on crash, no console window, no admin), and the same
 `tailscale serve` rule pins it to `:443`. The task starts `node` directly
 with the config in `service.env` next to it (port and file paths), which
@@ -150,17 +156,17 @@ The formula deliberately installs from HEAD and builds the locked contributor
 dependencies. It does not use release archives:
 
 ```sh
-brew tap xkeanu/portless-home https://github.com/xkeanu/portless-home
-brew install --HEAD xkeanu/portless-home/portless-home
+brew tap xkeanu/homeport https://github.com/xkeanu/homeport
+brew install --HEAD xkeanu/homeport/homeport
 ```
 
 Then pick how it runs — this is the start-at-login switch for the brew
 path:
 
 ```sh
-brew services start portless-home   # run now and at every login
-brew services run portless-home     # run now only
-brew services stop portless-home    # off
+brew services start homeport   # run now and at every login
+brew services run homeport     # run now only
+brew services stop homeport    # off
 ```
 
 Homebrew doesn't touch your Tailscale config, so add the serve rule
@@ -172,7 +178,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:5995
 
 ## Apps started outside Portless
 
-Add known app URLs to `~/.portless-home/external-apps.json`:
+Add known app URLs to `~/.homeport/external-apps.json`:
 
 ```json
 {
@@ -212,7 +218,7 @@ portless alias grafana 3000  # grafana.localhost -> 127.0.0.1:3000
 
 Both are static routes: `routes.json` stores them with `pid: 0` because no
 portless process owns them (see `docs/fixtures/routes.compose.json`, captured
-from portless 0.16.0). portless-home keeps every static route and takes its
+from portless 0.16.0). homeport keeps every static route and takes its
 status from the health probe alone: green while the port answers, grey
 otherwise. Routes with a process id still disappear when that process exits;
 a self-daemonizing app stays listed because portless moves its route to the
@@ -242,8 +248,8 @@ node accounts-cli.mjs capture codex --label Work
 node accounts-cli.mjs refresh
 ```
 
-Homebrew installs the same CLI as `portless-home-accounts`; for example,
-run `portless-home-accounts enable` and `portless-home-accounts capture claude`.
+Homebrew installs the same CLI as `homeport-accounts`; for example,
+run `homeport-accounts enable` and `homeport-accounts capture claude`.
 
 Open `http://127.0.0.1:5995/accounts` to see current CLI logins, saved accounts,
 usage and routing preferences grouped by provider. An unsaved current login has
@@ -284,7 +290,7 @@ may need an absolute `codexCommand` if its `PATH` differs from your terminal.
 `PORTLESS_ACCOUNT_HOME` supplies the default provider home; the Windows installer
 sets it to your actual profile because scheduled tasks can use another home.
 
-Configuration defaults to `~/.portless-home/accounts/config.json`;
+Configuration defaults to `~/.homeport/accounts/config.json`;
 `PORTLESS_ACCOUNTS` overrides it. Credentials are stored in an authenticated
 AES-GCM vault beside the config, with a local key file. On macOS/Linux, the
 account directory and files must belong to you and have modes 700 and 600.
@@ -361,7 +367,7 @@ unavailable until you sign in and capture the same identity locally.
 
 ## Start registered apps locally
 
-To keep stopped apps on the page, create `~/.portless-home/apps.json`
+To keep stopped apps on the page, create `~/.homeport/apps.json`
 with explicit opt-in and commands you trust:
 
 ```json
@@ -405,7 +411,7 @@ peer APIs. This is a local-machine boundary, not authentication between
 local users: other programs on the machine can submit local requests.
 Protect the registry as carefully as your shell scripts. On macOS and
 Linux, its file must belong to the server's user and must not be writable
-by group or other users (`chmod 600 ~/.portless-home/apps.json`). On
+by group or other users (`chmod 600 ~/.homeport/apps.json`). On
 Windows, use file permissions that allow only your account to edit it.
 
 Duplicate starts are rejected while this server tracks the launched
@@ -424,7 +430,7 @@ run one of those. Both show the same menu.
 ### Native app
 
 `macos/` is a small AppKit app (SwiftPM, no Xcode project). It puts the
-portless-home icon in the menu bar with the number of apps passing the
+homeport icon in the menu bar with the number of apps passing the
 health probe, and a dropdown listing every running app — ● / ○ health
 dot, click to open its tailnet URL (local-only apps are listed greyed
 out) — plus **Open home page**, **Start / Stop / Restart service** for
@@ -437,38 +443,38 @@ Install with Homebrew (compiles on your machine with the Xcode Command
 Line Tools, so no Gatekeeper prompt; macOS 13+):
 
 ```sh
-brew install --HEAD xkeanu/portless-home/portless-home-app
-mkdir -p ~/Applications && ln -sf "$(brew --prefix)/opt/portless-home-app/PortlessHome.app" ~/Applications/
+brew install --HEAD xkeanu/homeport/homeport-app
+mkdir -p ~/Applications && ln -sf "$(brew --prefix)/opt/homeport-app/Homeport.app" ~/Applications/
 ```
 
-Or download `PortlessHome-vX.Y.Z-macos.zip` from a
-[release](https://github.com/xkeanu/portless-home/releases), unzip it, and
-move `PortlessHome.app` into `/Applications` or `~/Applications`. This build is
+Or download `Homeport-vX.Y.Z-macos.zip` from a
+[release](https://github.com/xkeanu/homeport/releases), unzip it, and
+move `Homeport.app` into `/Applications` or `~/Applications`. This build is
 unsigned on purpose: it carries only an ad-hoc signature, because Developer ID
 signing and notarization are not set up yet (tracked in
-[#34](https://github.com/xkeanu/portless-home/issues/34)). macOS blocks the
+[#34](https://github.com/xkeanu/homeport/issues/34)). macOS blocks the
 first launch. Open the app once, dismiss the warning, then go to **System
 Settings → Privacy & Security** and click **Open Anyway**. From a terminal you
 can instead clear the quarantine flag before the first launch:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/PortlessHome.app
+xattr -dr com.apple.quarantine /Applications/Homeport.app
 ```
 
 To skip this step, use the Homebrew install above: it compiles locally, so
 the app is never quarantined.
 
 Or build it from a checkout: `macos/build.sh` writes
-`macos/dist/PortlessHome.app`; move that into `~/Applications`. Tests:
+`macos/dist/Homeport.app`; move that into `~/Applications`. Tests:
 `cd macos && swift test`.
 
 The app only talks to the local server (`/api/routes`); the port is read
-from the installed launchd plist, `PORTLESS_HOME_URL` overrides the
+from the installed launchd plist, `HOMEPORT_URL` overrides the
 server URL.
 
 ### xbar / SwiftBar plugin
 
-`menubar/portless-home.15s.sh` is a plugin for [xbar](https://xbarapp.com)
+`menubar/homeport.15s.sh` is a plugin for [xbar](https://xbarapp.com)
 or [SwiftBar](https://swiftbar.app). It puts `⌂ 3` in the menu bar (the
 number of apps passing the health probe) with a dropdown listing every
 running app — a ● / ○ health dot and a link to its tailnet URL (local-only
@@ -477,34 +483,34 @@ apps link to their localhost port) — plus **Open home page** and
 it into your plugin folder:
 
 ```sh
-ln -s "$PWD/menubar/portless-home.15s.sh" ~/Library/Application\ Support/xbar/plugins/
+ln -s "$PWD/menubar/homeport.15s.sh" ~/Library/Application\ Support/xbar/plugins/
 ```
 
 (For SwiftBar, use the plugin folder you chose in its settings. Installed
 via Homebrew? The file is at
-`$(brew --prefix)/share/portless-home/menubar/portless-home.15s.sh`.) The
+`$(brew --prefix)/share/homeport/menubar/homeport.15s.sh`.) The
 `15s` in the file name is the refresh interval; rename the link to change
 it.
 When the server is down the icon greys out and the menu offers **Start
 service**. The plugin only needs `curl`: the menu itself comes from the
 server at `/api/menubar`, in the plugin text format, and the port is read
-from the installed launchd plist (`PORTLESS_HOME_URL` overrides the
+from the installed launchd plist (`HOMEPORT_URL` overrides the
 server URL).
 
 ## System tray (Windows)
 
-`tray/portless-home-tray.ps1` is the same menu as a tray icon: a house,
+`tray/homeport-tray.ps1` is the same menu as a tray icon: a house,
 green when the server is up (hover for the healthy-app count) and grey
 when it's down. Right-click for the running apps with their health dots
 and tailnet links, **Open home page**, **Start / Stop / Restart service**
 for the scheduled task, and **Exit**. It needs nothing but Windows
 PowerShell; the menu comes from the server at `/api/menubar` just like
 the macOS plugin, and the port is read from `service.env`
-(`PORTLESS_HOME_URL` overrides the server URL). Start it without a
+(`HOMEPORT_URL` overrides the server URL). Start it without a
 window:
 
 ```powershell
-powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File tray\portless-home-tray.ps1
+powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File tray\homeport-tray.ps1
 ```
 
 To have it back at every login, put a shortcut to that command in the
@@ -512,9 +518,9 @@ Startup folder (Win+R, `shell:startup`).
 
 ## Other devices
 
-Running portless-home on more than one machine? Any instance can show
+Running homeport on more than one machine? Any instance can show
 the others' apps as well. List their device URLs in
-`~/.portless-home/peers.json`:
+`~/.homeport/peers.json`:
 
 ```json
 { "peers": ["https://laptop.example.ts.net", "https://desktop.example.ts.net"] }
@@ -551,7 +557,7 @@ fetches, even when they cannot open those apps themselves.
 ## Owners and viewers
 
 Anyone who can open the directory can rename and reorder its apps until you
-name its owners. List your Tailscale logins in `~/.portless-home/access.json`:
+name its owners. List your Tailscale logins in `~/.homeport/access.json`:
 
 ```json
 { "owners": ["alice@example.com"] }
@@ -581,7 +587,7 @@ reorder controls.
 Identity comes from the `Tailscale-User-Login` header that `tailscale serve`
 (v1.92 or later) adds to tailnet requests, after it strips any copy the client
 sent ([Tailscale docs](https://tailscale.com/kb/1312/serve)). That is safe to
-trust only because portless-home listens on `127.0.0.1`: do not expose port
+trust only because homeport listens on `127.0.0.1`: do not expose port
 5995 any other way. A request that reaches loopback with an identity header is
 judged by that login, never trusted as this device. Funnel traffic carries no
 identity, so it would be read-only; public access is not supported.
@@ -602,12 +608,12 @@ rule. On Windows: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1`.
 ## How it fits together
 
 ```text
-phone ── https://<device>.<tailnet>.ts.net ──► tailscale serve :443 ──► portless-home :5995
+phone ── https://<device>.<tailnet>.ts.net ──► tailscale serve :443 ──► homeport :5995
                                        :8443 ──► your app A
                                        :8444 ──► your app B
 ```
 
-portless-home never proxies app traffic; it only renders links. Each
+homeport never proxies app traffic; it only renders links. Each
 app's traffic goes through Tailscale's own serve rules, with Tailscale's
 certs.
 
@@ -653,7 +659,7 @@ Maintainers create candidate archives after a clean build:
 
 ```sh
 node scripts/package.mjs v1.2.3 --output release
-node scripts/release-smoke.mjs release/portless-home-v1.2.3.tar.gz
+node scripts/release-smoke.mjs release/homeport-v1.2.3.tar.gz
 ```
 
 The command writes deterministic `.tar.gz` and `.zip` archives plus a
@@ -664,8 +670,8 @@ not provide archive writers. The manifest order, file timestamps, archive
 ownership, gzip timestamp, and stripped zip metadata keep repeated builds on
 the release runner reproducible.
 
-The tag workflow also builds `PortlessHome.app` as a universal binary (Apple
+The tag workflow also builds `Homeport.app` as a universal binary (Apple
 Silicon and Intel), zips the ad-hoc-signed bundle with
-`ditto -c -k --keepParent`, and publishes it as `PortlessHome-vX.Y.Z-macos.zip`
+`ditto -c -k --keepParent`, and publishes it as `Homeport-vX.Y.Z-macos.zip`
 next to the Node archives. Every release is a pre-release until signed and
 notarized macOS builds and a Homebrew cask land (#34).

@@ -44,8 +44,8 @@ export const releaseFiles = [
 	'docs/fixtures/routes.example.json',
 	'docs/screenshot.png',
 	'docs/tailnet-sharing.md',
-	'menubar/portless-home.15s.sh',
-	'tray/portless-home-tray.ps1',
+	'menubar/homeport.15s.sh',
+	'tray/homeport-tray.ps1',
 ];
 
 // SemVer 2.0.0, with the v prefix used by GitHub release tags.
@@ -89,8 +89,8 @@ export const packageRelease = ({ tag, output = join(root, 'release'), source = r
 	source = resolve(source);
 	requireFiles(source);
 	mkdirSync(output, { recursive: true });
-	const name = `portless-home-${tag}`;
-	const temp = mkdtempSync(join(tmpdir(), 'portless-home-release-'));
+	const name = `homeport-${tag}`;
+	const temp = mkdtempSync(join(tmpdir(), 'homeport-release-'));
 	const staging = join(temp, name);
 	try {
 		mkdirSync(staging);

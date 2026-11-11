@@ -83,7 +83,7 @@ const stopServer = async (child) => {
 };
 
 export const smokeArchive = async (archive) => {
-	const temp = mkdtempSync(join(tmpdir(), 'portless-home-smoke-'));
+	const temp = mkdtempSync(join(tmpdir(), 'homeport-smoke-'));
 	try {
 		const extracted = spawnSync('tar', ['-xzf', archive, '-C', temp], { encoding: 'utf8' });
 		if (extracted.status !== 0) fail(`Could not extract archive: ${extracted.stderr}`);
@@ -162,7 +162,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 			process.exitCode = 1;
 		});
 	} else {
-		console.error('Usage: node scripts/release-smoke.mjs path/to/portless-home-v1.2.3.tar.gz');
+		console.error('Usage: node scripts/release-smoke.mjs path/to/homeport-v1.2.3.tar.gz');
 		process.exitCode = 1;
 	}
 }

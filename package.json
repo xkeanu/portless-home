@@ -1,5 +1,5 @@
 {
-  "name": "portless-home",
+  "name": "homeport",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22.13.0" },

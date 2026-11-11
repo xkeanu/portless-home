@@ -13,7 +13,7 @@ function fixture(t, missing, windows) {
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const source = join(root, 'source');
 	const profile = join(root, 'profile');
-	const install = join(profile, '.portless-home');
+	const install = join(profile, '.homeport');
 	mkdirSync(source);
 	mkdirSync(install, { recursive: true });
 	writeFileSync(join(install, 'server.mjs'), 'existing server, preserve this\n');
@@ -70,4 +70,27 @@ test('Windows install rejects every missing account runtime before replacing fil
 		assert.match(result.stdout, new RegExp(`Missing ${missing.replaceAll('.', '\\.')}`));
 		assertUnchanged(value);
 	}
+});
+
+test('POSIX install moves an old portless-home install and stops its service', { skip: process.platform === 'win32' && 'POSIX installer runs on macOS and Linux' }, (t) => {
+	const value = fixture(t, null, false);
+	rmSync(value.install, { recursive: true });
+	const legacy = join(value.profile, '.portless-home');
+	mkdirSync(legacy, { recursive: true });
+	writeFileSync(join(legacy, 'peers.json'), '{"peers":[]}\n');
+	mkdirSync(join(value.profile, 'Library', 'LaunchAgents'), { recursive: true });
+	const bin = join(value.root, 'bin');
+	mkdirSync(bin);
+	for (const command of ['launchctl', 'systemctl', 'curl', 'sleep']) {
+		writeFileSync(join(bin, command), '#!/bin/sh\nprintf "%s %s\\n" "${0##*/}" "$*" >> "$PORTLESS_INSTALL_TEST_ACTIVITY"\n', { mode: 0o755 });
+	}
+	writeFileSync(join(bin, 'tailscale'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+	const result = spawnSync('sh', [join(value.source, 'install.sh')], {
+		encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, PORTLESS_INSTALL_TEST_PROFILE: value.profile, PORTLESS_INSTALL_TEST_ACTIVITY: value.activity },
+	});
+	assert.equal(result.status, 0, result.stdout + result.stderr);
+	assert.equal(existsSync(legacy), false);
+	assert.equal(readFileSync(join(value.install, 'peers.json'), 'utf8'), '{"peers":[]}\n');
+	const activity = readFileSync(value.activity, 'utf8');
+	assert.match(activity, process.platform === 'darwin' ? /launchctl bootout gui\/\d+\/sh\.portless\.home/ : /systemctl --user disable --now portless-home\.service/);
 });

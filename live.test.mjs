@@ -17,7 +17,7 @@ const until = async (check, timeoutMs = 3000) => {
 };
 
 const routesFixture = () => {
-	const file = join(mkdtempSync(join(tmpdir(), 'portless-home-live-')), 'routes.json');
+	const file = join(mkdtempSync(join(tmpdir(), 'homeport-live-')), 'routes.json');
 	writeFileSync(file, '[]');
 	return file;
 };
@@ -52,7 +52,7 @@ test('stamp is a short hex digest of the text; readText is empty for a missing f
 	assert.match(stamp('[]'), /^[0-9a-f]{12}$/);
 	assert.equal(stamp('[]'), stamp('[]'));
 	assert.notEqual(stamp('[]'), stamp('[1]'));
-	assert.equal(readText(join(tmpdir(), 'portless-home-nowhere', 'routes.json')), '');
+	assert.equal(readText(join(tmpdir(), 'homeport-nowhere', 'routes.json')), '');
 });
 
 test('watchFile fires once for a burst of writes and only for the watched file', async () => {
@@ -125,7 +125,7 @@ test('the watcher opens with the first stream and closes with the last', async (
 });
 
 test('events reports failure without writing a response when the routes directory is missing', async () => {
-	const live = events(join(tmpdir(), 'portless-home-nowhere', 'routes.json'));
+	const live = events(join(tmpdir(), 'homeport-nowhere', 'routes.json'));
 	const app = await listen((req, res) => live(res) || res.writeHead(503).end());
 	const stream = await open(app.address().port, '/events');
 	try {

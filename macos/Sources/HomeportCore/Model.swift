@@ -40,7 +40,7 @@ public struct Service: Equatable {
         self.plist = plist
     }
 
-    public static let labels = ["sh.portless.home", "homebrew.mxcl.portless-home"]
+    public static let labels = ["sh.homeport", "homebrew.mxcl.homeport"]
 
     public static func installed(agents: URL, exists: (URL) -> Bool) -> Service? {
         for label in labels {
@@ -62,9 +62,9 @@ public func port(fromPlist data: Data?) -> Int {
     return port
 }
 
-/// Server base URL: PORTLESS_HOME_URL if set, else localhost on the port.
+/// Server base URL: HOMEPORT_URL if set, else localhost on the port.
 public func serverURL(environment: [String: String], port: Int) -> URL {
-    if let override = environment["PORTLESS_HOME_URL"], let url = URL(string: override) { return url }
+    if let override = environment["HOMEPORT_URL"], let url = URL(string: override) { return url }
     return URL(string: "http://127.0.0.1:\(port)/")!
 }
 
@@ -93,11 +93,11 @@ public func menu(apps: [App]?, home: URL, service: Service?, launchAtLogin: Bool
         entries += apps.isEmpty ? [.text("Nothing running. Start an app through portless.")] : apps.map(Entry.app)
         if service != nil { entries += [.separator, .service(.restart), .service(.stop)] }
     } else {
-        entries.append(.text("portless-home is not running"))
+        entries.append(.text("homeport is not running"))
         if service != nil {
             entries.append(.service(.start))
         } else {
-            entries.append(.text("No login service found — ./install.sh or brew services start portless-home"))
+            entries.append(.text("No login service found — ./install.sh or brew services start homeport"))
         }
     }
     entries += [.separator, .launchAtLogin(enabled: launchAtLogin), .refresh, .quit]

@@ -18,7 +18,7 @@ const claudeUsage = { five_hour: { utilization: 25, resets_at: reset }, seven_da
 const codexUsage = { rateLimits: { primary: { usedPercent: 30, windowDurationMins: 300, resetsAt: Date.parse(reset) / 1000 }, secondary: { usedPercent: 80, windowDurationMins: 10080, resetsAt: Date.parse('2026-10-05T12:00:00Z') / 1000 } } };
 
 async function fixture(t, deps = {}) {
-	const home = await mkdtemp(join(tmpdir(), 'portless-home-providers-test-'));
+	const home = await mkdtemp(join(tmpdir(), 'homeport-providers-test-'));
 	t.after(() => rm(home, { recursive: true, force: true }));
 	const config = { claudeDir: join(home, '.claude'), claudeConfig: join(home, '.claude.json'), codexHome: join(home, '.codex'), codexSystemConfig: join(home, 'system.toml'), codexRequirements: join(home, 'requirements.toml') };
 	await mkdir(config.claudeDir); await mkdir(config.codexHome);
@@ -219,7 +219,7 @@ test('isolated Codex refresh returns native rotated tokens and removes temporary
 	assert.equal(result.windows[1].windowMinutes, 10080);
 	assert.equal(checkpoints.length, 1);
 	assert.equal(checkpoints[0].identity.accountId, 'alice:workspace');
-	assert.ok(!(await readdir(f.home)).some((name) => name.startsWith('portless-home-codex-')));
+	assert.ok(!(await readdir(f.home)).some((name) => name.startsWith('homeport-codex-')));
 });
 
 test('Windows Codex subprocess homes and temporary paths are private and never inherited', async (t) => {
@@ -231,7 +231,7 @@ test('Windows Codex subprocess homes and temporary paths are private and never i
 		return { account: { type: 'chatgpt', email: 'alice@example.com', planType: 'pro' }, usage: codexUsage };
 	} });
 	await f.providers.codex.usage(codexPayload());
-	assert.ok(!(await readdir(f.home)).some((name) => name.startsWith('portless-home-codex-')));
+	assert.ok(!(await readdir(f.home)).some((name) => name.startsWith('homeport-codex-')));
 });
 
 test('Windows service account-home defaults use the configured profile and preserve native CLI directory overrides', async (t) => {

@@ -14,7 +14,7 @@ const documentOf = (html) => new JSDOM(html).window.document;
 
 // Missing fixture files must never fall back to the developer's registry or peers.
 beforeEach((t) => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-config-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-config-'));
 	const keys = ['PORTLESS_ROUTES', 'PORTLESS_NAMES', 'PORTLESS_LAYOUT', 'PORTLESS_PEERS', 'PORTLESS_APPS', 'PORTLESS_EXTERNAL_APPS', 'PORTLESS_ACCOUNTS', 'PORTLESS_ACCESS'];
 	const previous = new Map(keys.map((key) => [key, process.env[key]]));
 	for (const key of keys) process.env[key] = join(dir, key + '.json');
@@ -155,7 +155,7 @@ test('handler renders a green dot for a live port and a plain dot for a dead one
 	const deadPort = dead.address().port;
 	await new Promise((resolve) => dead.close(resolve));
 
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -189,7 +189,7 @@ test('handler renders a green dot for a live port and a plain dot for a dead one
 });
 
 test('handler returns 200 with an empty page when the routes file is missing', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const missingPath = join(dir, 'does-not-exist.json');
 
 	process.env.PORTLESS_ROUTES = missingPath;
@@ -239,7 +239,7 @@ test('GET renders the override label from names.json instead of the hostname', a
 	await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
 	const livePort = live.address().port;
 
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -269,7 +269,7 @@ test('GET renders the override label from names.json instead of the hostname', a
 });
 
 test('GET still renders when names.json is missing', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -296,7 +296,7 @@ test('GET still renders when names.json is missing', async () => {
 });
 
 test('GET still renders when names.json is corrupt', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -327,7 +327,7 @@ test('GET still renders when names.json is corrupt', async () => {
 });
 
 test('POST /rename writes the file; a following GET shows the new label', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -355,7 +355,7 @@ test('POST /rename writes the file; a following GET shows the new label', async 
 });
 
 test('POST with empty label clears an existing override', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -384,7 +384,7 @@ test('POST with empty label clears an existing override', async () => {
 });
 
 test('POST /rename rejects unknown hostname, malformed JSON, and over-long labels', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -419,7 +419,7 @@ test('POST /rename rejects unknown hostname, malformed JSON, and over-long label
 });
 
 test('a label with markup renders escaped in the page', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -447,7 +447,7 @@ test('a label with markup renders escaped in the page', async () => {
 });
 
 test('page renders a rename control and references the bundled Svelte client', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -476,7 +476,7 @@ test('page renders a rename control and references the bundled Svelte client', a
 });
 
 test('GET renders pinned apps first, in layout.json order', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -512,7 +512,7 @@ test('GET renders pinned apps first, in layout.json order', async () => {
 });
 
 test('POST /layout saves the pin order; a following GET renders it', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -546,7 +546,7 @@ test('POST /layout saves the pin order; a following GET renders it', async () =>
 });
 
 test('POST /layout keeps pins for apps that are not currently running', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -578,7 +578,7 @@ test('POST /layout keeps pins for apps that are not currently running', async ()
 });
 
 test('POST /layout: a later save replaces the order of an earlier one', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -613,7 +613,7 @@ test('POST /layout: a later save replaces the order of an earlier one', async ()
 });
 
 test('POST /layout rejects malformed JSON, non-array pins, non-string entries, and oversized lists', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -646,7 +646,7 @@ test('POST /layout rejects malformed JSON, non-array pins, non-string entries, a
 });
 
 test('page renders pin controls and reorder handles only on pinned cards', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(
 		routesPath,
@@ -686,7 +686,7 @@ test('page renders pin controls and reorder handles only on pinned cards', async
 });
 
 test('GET /manifest.webmanifest returns an installable web app manifest', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	process.env.PORTLESS_ROUTES = join(dir, 'routes.json');
 	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
@@ -727,7 +727,7 @@ test('GET /manifest.webmanifest returns an installable web app manifest', async 
 });
 
 test('GET /icon.svg returns an SVG image', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	process.env.PORTLESS_ROUTES = join(dir, 'routes.json');
 	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
@@ -748,7 +748,7 @@ test('GET /icon.svg returns an SVG image', async () => {
 });
 
 test('GET /icon.png returns a PNG image', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	process.env.PORTLESS_ROUTES = join(dir, 'routes.json');
 	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
@@ -769,7 +769,7 @@ test('GET /icon.png returns a PNG image', async () => {
 });
 
 test('page head links the manifest, icons, and theme color', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	process.env.PORTLESS_ROUTES = join(dir, 'routes.json');
 	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
@@ -861,7 +861,7 @@ test('page shows the Tailscale banner with a reconnect hint only when the tailne
 });
 
 test('GET / reflects the machine tailnet state in the banner', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	process.env.PORTLESS_ROUTES = join(dir, 'routes.json');
 	process.env.PORTLESS_NAMES = join(dir, 'names.json');
 	const { handler } = await import(`./server.mjs?fixture=${Date.now()}`);
@@ -911,7 +911,7 @@ test('GET /api/routes returns this device and its apps as JSON, with labels and 
 	const deadPort = dead.address().port;
 	await new Promise((resolve) => dead.close(resolve));
 
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const { port, close } = await bootFixture(dir, {
 		'routes.json': [
 			{ hostname: 'demo.localhost', port: livePort, pid: process.pid, tailscaleUrl: 'https://mac.example.ts.net:8443' },
@@ -951,7 +951,7 @@ test('GET / groups Compose services into one project card; static routes are kep
 	// A self-daemonizing app: portless moves the route to the background server's pid.
 	const daemon = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
 
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const { port, close } = await bootFixture(dir, {
 		'routes.json': [
 			{ hostname: 'blog.localhost', port: livePort, pid: process.pid, tailscaleUrl: 'https://mini.example.ts.net:8443' },
@@ -1002,7 +1002,7 @@ test('GET / renders a peer\'s Compose project as the same grouped card', async (
 			{ hostname: 'api.shop.localhost', label: 'api', project: 'shop', up: false },
 		],
 	});
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const { port, close } = await bootFixture(dir, { 'peers.json': { peers: [peer.base] } });
 	try {
 		const section = documentOf((await get(port)).data).querySelectorAll('section')[1];
@@ -1042,7 +1042,7 @@ test('GET / merges configured peers under per-device headings; unreachable peers
 	const goneBase = `http://127.0.0.1:${gone.address().port}`;
 	await new Promise((resolve) => gone.close(resolve));
 
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const { port, close } = await bootFixture(dir, {
 		'routes.json': [
 			{ hostname: 'demo.localhost', port: live.address().port, pid: process.pid, tailscaleUrl: 'https://mac.example.ts.net:8443' },
@@ -1072,7 +1072,7 @@ test('GET / merges configured peers under per-device headings; unreachable peers
 
 test('GET / with a reachable peer that has nothing running shows its heading with an empty note', async () => {
 	const peer = await jsonServer({ device: 'laptop', apps: [] });
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const { port, close } = await bootFixture(dir, { 'peers.json': { peers: [peer.base] } });
 	try {
 		const body = await get(port);
@@ -1086,7 +1086,7 @@ test('GET / with a reachable peer that has nothing running shows its heading wit
 });
 
 test('GET / with no peers configured renders no device headings', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const { port, close } = await bootFixture(dir, { 'routes.json': [] });
 	try {
 		const body = await get(port);
@@ -1122,7 +1122,7 @@ test('GET /api/menubar returns the xbar/SwiftBar dropdown as text: title, home l
 	const deadPort = dead.address().port;
 	await new Promise((resolve) => dead.close(resolve));
 
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const { port, close } = await bootFixture(dir, {
 		'routes.json': [
 			{ hostname: 'demo.localhost', port: livePort, pid: process.pid, tailscaleUrl: 'https://mac.example.ts.net:8443' },
@@ -1163,7 +1163,7 @@ const getLang = (port, acceptLanguage) =>
 	});
 
 test('GET translates the heading, local-only label, and empty state from Accept-Language', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(routesPath, JSON.stringify([{ hostname: 'notes.localhost', port: 1, pid: process.pid }]));
 
@@ -1197,7 +1197,7 @@ test('GET translates the heading, local-only label, and empty state from Accept-
 });
 
 test('GET /events opens a server-sent-events stream; other methods get 405', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-test-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-test-'));
 	const routesPath = join(dir, 'routes.json');
 	writeFileSync(routesPath, '[]');
 	process.env.PORTLESS_ROUTES = routesPath;
@@ -1264,7 +1264,7 @@ test('hydration data round-trips hostile labels without creating executable mark
 });
 
 test('UI assets have correct MIME types and only public bundles are served', async () => {
-	const dir = mkdtempSync(join(tmpdir(), 'portless-home-assets-'));
+	const dir = mkdtempSync(join(tmpdir(), 'homeport-assets-'));
 	const { port, close } = await bootFixture(dir, {});
 	try {
 		for (const [name, type] of [['ui.js', 'text/javascript'], ['ui.css', 'text/css']]) {

@@ -1,5 +1,5 @@
 #!/bin/sh
-# portless-home installer (macOS: launchd / Linux: systemd user service).
+# homeport installer (macOS: launchd / Linux: systemd user service).
 # Installs the home-page server as a login service and pins it to your
 # tailnet device URL via `tailscale serve`. Run from the repo directory.
 # --no-autostart starts the server now but skips start-at-login (and
@@ -14,8 +14,8 @@ for ARG in "$@"; do
 	esac
 done
 
-LABEL="sh.portless.home"
-INSTALL_DIR="$HOME/.portless-home"
+LABEL="sh.homeport"
+INSTALL_DIR="$HOME/.homeport"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 PORT="${PORT:-5995}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -39,6 +39,19 @@ case "$OS" in
 	*) echo "Unsupported OS: $OS (macOS and Linux only; on Windows run install.ps1)."; exit 1 ;;
 esac
 NODE_BIN="$(command -v node)" || { echo "node not found on PATH."; exit 1; }
+
+# Upgrade from the old portless-home name: stop its service, keep its config.
+if [ "$OS" = "Darwin" ]; then
+	launchctl bootout "gui/$(id -u)/sh.portless.home" 2>/dev/null || true
+	rm -f "$HOME/Library/LaunchAgents/sh.portless.home.plist"
+else
+	systemctl --user disable --now portless-home.service 2>/dev/null || true
+	rm -f "$HOME/.config/systemd/user/portless-home.service"
+fi
+if [ -d "$HOME/.portless-home" ] && [ ! -e "$INSTALL_DIR" ]; then
+	mv "$HOME/.portless-home" "$INSTALL_DIR"
+	echo "Moved ~/.portless-home to $INSTALL_DIR."
+fi
 
 mkdir -p "$INSTALL_DIR/dist"
 cp "$SCRIPT_DIR/server.mjs" "$SCRIPT_DIR/render.mjs" "$SCRIPT_DIR/i18n.mjs" "$SCRIPT_DIR/peers.mjs" "$SCRIPT_DIR/menubar.mjs" "$SCRIPT_DIR/live.mjs" "$SCRIPT_DIR/launch.mjs" "$SCRIPT_DIR/external.mjs" "$SCRIPT_DIR/projects.mjs" "$SCRIPT_DIR/access.mjs" "$INSTALL_DIR/"
@@ -77,9 +90,9 @@ EOF
 else
 	UNIT_DIR="$HOME/.config/systemd/user"
 	mkdir -p "$UNIT_DIR"
-	cat > "$UNIT_DIR/portless-home.service" <<UNIT
+	cat > "$UNIT_DIR/homeport.service" <<UNIT
 [Unit]
-Description=portless-home tailnet directory page
+Description=homeport tailnet directory page
 After=network.target
 
 [Service]
@@ -94,11 +107,11 @@ UNIT
 
 	systemctl --user daemon-reload || { echo "systemd user session unavailable — log in on the console or run: loginctl enable-linger $USER"; exit 1; }
 	if [ "$AUTOSTART" = 1 ]; then
-		systemctl --user enable portless-home.service
+		systemctl --user enable homeport.service
 	else
-		systemctl --user disable portless-home.service 2>/dev/null || true
+		systemctl --user disable homeport.service 2>/dev/null || true
 	fi
-	systemctl --user restart portless-home.service
+	systemctl --user restart homeport.service
 fi
 sleep 1
 curl -sf -o /dev/null "http://127.0.0.1:$PORT/" || { echo "Server did not start; see $INSTALL_DIR/service.log"; exit 1; }

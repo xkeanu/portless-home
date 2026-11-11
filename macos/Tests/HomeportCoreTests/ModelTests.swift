@@ -1,9 +1,9 @@
 import XCTest
-@testable import PortlessHomeCore
+@testable import HomeportCore
 
 final class ModelTests: XCTestCase {
     let home = URL(string: "http://127.0.0.1:5995/")!
-    let service = Service(label: "sh.portless.home", plist: URL(fileURLWithPath: "/tmp/x.plist"))
+    let service = Service(label: "sh.homeport", plist: URL(fileURLWithPath: "/tmp/x.plist"))
 
     func testParseAppsKeepsUsableEntries() {
         let body = """
@@ -35,7 +35,7 @@ final class ModelTests: XCTestCase {
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0"><dict>
-          <key>Label</key><string>sh.portless.home</string>
+          <key>Label</key><string>sh.homeport</string>
           <key>EnvironmentVariables</key><dict><key>PORT</key><string>6001</string></dict>
         </dict></plist>
         """
@@ -49,17 +49,17 @@ final class ModelTests: XCTestCase {
 
     func testServerURL() {
         XCTAssertEqual(serverURL(environment: [:], port: 6001), URL(string: "http://127.0.0.1:6001/"))
-        XCTAssertEqual(serverURL(environment: ["PORTLESS_HOME_URL": "http://localhost:7000"], port: 6001),
+        XCTAssertEqual(serverURL(environment: ["HOMEPORT_URL": "http://localhost:7000"], port: 6001),
                        URL(string: "http://localhost:7000"))
     }
 
     func testInstalledServicePrefersInstallScriptAgent() {
         let agents = URL(fileURLWithPath: "/Users/me/Library/LaunchAgents")
         let both = Service.installed(agents: agents, exists: { _ in true })
-        XCTAssertEqual(both?.label, "sh.portless.home")
-        XCTAssertEqual(both?.plist.path, "/Users/me/Library/LaunchAgents/sh.portless.home.plist")
+        XCTAssertEqual(both?.label, "sh.homeport")
+        XCTAssertEqual(both?.plist.path, "/Users/me/Library/LaunchAgents/sh.homeport.plist")
         let brew = Service.installed(agents: agents, exists: { $0.lastPathComponent.hasPrefix("homebrew") })
-        XCTAssertEqual(brew?.label, "homebrew.mxcl.portless-home")
+        XCTAssertEqual(brew?.label, "homebrew.mxcl.homeport")
         XCTAssertNil(Service.installed(agents: agents, exists: { _ in false }))
     }
 
@@ -85,12 +85,12 @@ final class ModelTests: XCTestCase {
 
     func testMenuWhenDown() {
         XCTAssertEqual(menu(apps: nil, home: home, service: service, launchAtLogin: false), [
-            .text("portless-home is not running"), .service(.start),
+            .text("homeport is not running"), .service(.start),
             .separator, .launchAtLogin(enabled: false), .refresh, .quit,
         ])
         XCTAssertEqual(menu(apps: nil, home: home, service: nil, launchAtLogin: false), [
-            .text("portless-home is not running"),
-            .text("No login service found — ./install.sh or brew services start portless-home"),
+            .text("homeport is not running"),
+            .text("No login service found — ./install.sh or brew services start homeport"),
             .separator, .launchAtLogin(enabled: false), .refresh, .quit,
         ])
     }

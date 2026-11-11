@@ -1,4 +1,4 @@
-// portless-home menu bar: the dropdown for the xbar/SwiftBar plugin in
+// homeport menu bar: the dropdown for the xbar/SwiftBar plugin in
 // menubar/, served as text at GET /api/menubar. Plugin format: line 1 is the
 // menu bar title, `---` separates sections, and `|` starts a line's params.
 import { displayName } from './render.mjs';

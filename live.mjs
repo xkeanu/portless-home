@@ -1,4 +1,4 @@
-// portless-home live updates: a server-sent-events stream that fires when
+// homeport live updates: a server-sent-events stream that fires when
 // routes.json changes, so the page can reload the moment apps start or stop.
 // One fs.watch is shared by every open stream and exists only while a stream
 // is open — an idle server holds no watcher (CONTRIBUTING, principle 4).

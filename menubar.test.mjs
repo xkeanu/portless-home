@@ -63,7 +63,7 @@ test('menubar: a tailscaleUrl that is not a clean https URL never reaches href; 
 
 // --- the plugin script itself, run against a fake server ---
 
-const PLUGIN = resolve('menubar/portless-home.15s.sh');
+const PLUGIN = resolve('menubar/homeport.15s.sh');
 
 const runPlugin = (env) =>
 	new Promise((done, fail) =>
@@ -83,7 +83,7 @@ const textServer = async (body) => {
 
 // A HOME with the launchd plist install.sh writes, so the plugin sees a service.
 const homeWithPlist = (label, port) => {
-	const home = mkdtempSync(join(tmpdir(), 'portless-home-menubar-'));
+	const home = mkdtempSync(join(tmpdir(), 'homeport-menubar-'));
 	mkdirSync(join(home, 'Library', 'LaunchAgents'), { recursive: true });
 	const env = port ? `<key>EnvironmentVariables</key><dict><key>PORT</key><string>${port}</string></dict>` : '';
 	writeFileSync(
@@ -97,7 +97,7 @@ test('plugin: prints the server menu, then a Refresh item; no service controls w
 	const { srv, base } = await textServer('⌂ 2\n---\nOpen home page | href=http://127.0.0.1:5995/\n---\n● blog | href=https://a.example.ts.net:8443\n');
 	try {
 		// A trailing slash on the override must not turn the path into //api/menubar.
-		const out = await runPlugin({ HOME: mkdtempSync(join(tmpdir(), 'portless-home-menubar-')), PORTLESS_HOME_URL: `${base}/` });
+		const out = await runPlugin({ HOME: mkdtempSync(join(tmpdir(), 'homeport-menubar-')), HOMEPORT_URL: `${base}/` });
 		assert.deepEqual(out.split('\n'), [
 			'⌂ 2',
 			'---',
@@ -118,9 +118,9 @@ const POSIX_PATH = { skip: process.platform === 'win32' && 'xbar/SwiftBar run on
 
 test('plugin: with the server up and a plist, offers Restart and Stop (xbar: shell=, SwiftBar: bash=)', POSIX_PATH, async () => {
 	const { srv, base } = await textServer('⌂ 1\n---\nx\n');
-	const home = homeWithPlist('sh.portless.home');
+	const home = homeWithPlist('sh.homeport');
 	try {
-		const xbar = await runPlugin({ HOME: home, PORTLESS_HOME_URL: base });
+		const xbar = await runPlugin({ HOME: home, HOMEPORT_URL: base });
 		assert.deepEqual(xbar.split('\n').slice(3), [
 			'---',
 			`Restart service | shell="${PLUGIN}" param1=restart terminal=false refresh=true`,
@@ -129,7 +129,7 @@ test('plugin: with the server up and a plist, offers Restart and Stop (xbar: she
 			'Refresh | refresh=true',
 			'',
 		]);
-		const swiftbar = await runPlugin({ HOME: home, PORTLESS_HOME_URL: base, SWIFTBAR: '1' });
+		const swiftbar = await runPlugin({ HOME: home, HOMEPORT_URL: base, SWIFTBAR: '1' });
 		assert.equal(swiftbar.split('\n')[4], `Restart service | bash="${PLUGIN}" param1=restart terminal=false refresh=true`);
 	} finally {
 		srv.close();
@@ -140,24 +140,24 @@ test('plugin: with the server down, shows a grey title, says so, and offers Star
 	const { srv, port } = await textServer('');
 	await new Promise((resolve) => srv.close(resolve));
 	const down = `http://127.0.0.1:${port}`;
-	const withService = await runPlugin({ HOME: homeWithPlist('homebrew.mxcl.portless-home'), PORTLESS_HOME_URL: down });
+	const withService = await runPlugin({ HOME: homeWithPlist('homebrew.mxcl.homeport'), HOMEPORT_URL: down });
 	assert.deepEqual(withService.split('\n'), [
 		'⌂ – | color=gray',
 		'---',
-		'portless-home is not running | disabled=true color=gray',
+		'homeport is not running | disabled=true color=gray',
 		`Start service | shell="${PLUGIN}" param1=start terminal=false refresh=true`,
 		'---',
 		'Refresh | refresh=true',
 		'',
 	]);
-	const noService = await runPlugin({ HOME: mkdtempSync(join(tmpdir(), 'portless-home-menubar-')), PORTLESS_HOME_URL: down });
-	assert.equal(noService.split('\n')[3], 'No login service found — ./install.sh or brew services start portless-home | disabled=true color=gray');
+	const noService = await runPlugin({ HOME: mkdtempSync(join(tmpdir(), 'homeport-menubar-')), HOMEPORT_URL: down });
+	assert.equal(noService.split('\n')[3], 'No login service found — ./install.sh or brew services start homeport | disabled=true color=gray');
 });
 
-test('plugin: reads the port from the install.sh plist when PORTLESS_HOME_URL is unset', { skip: process.platform !== 'darwin' && 'needs plutil' }, async () => {
+test('plugin: reads the port from the install.sh plist when HOMEPORT_URL is unset', { skip: process.platform !== 'darwin' && 'needs plutil' }, async () => {
 	const { srv, port } = await textServer('⌂ 0\n---\nfrom plist port\n');
 	try {
-		const out = await runPlugin({ HOME: homeWithPlist('sh.portless.home', port) });
+		const out = await runPlugin({ HOME: homeWithPlist('sh.homeport', port) });
 		assert.equal(out.split('\n')[2], 'from plist port');
 	} finally {
 		srv.close();

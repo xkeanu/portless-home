@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { isReleaseTag, packageRelease, releaseFiles, tarOwnershipArgs } from './package.mjs';
 
 const makeFixture = () => {
-	const root = mkdtempSync(join(tmpdir(), 'portless-home-package-test-'));
+	const root = mkdtempSync(join(tmpdir(), 'homeport-package-test-'));
 	for (const file of releaseFiles) {
 		const path = join(root, file);
 		mkdirSync(join(path, '..'), { recursive: true });
@@ -35,7 +35,7 @@ test('package selects ownership flags supported by GNU and BSD tar', () => {
 
 test('packageRelease rejects invalid tags and missing build output', () => {
 	const source = makeFixture();
-	const output = mkdtempSync(join(tmpdir(), 'portless-home-package-invalid-'));
+	const output = mkdtempSync(join(tmpdir(), 'homeport-package-invalid-'));
 	try {
 		assert.throws(() => packageRelease({ tag: '1.2.3', source, output }), /Expected a SemVer release tag/);
 		rmSync(join(source, 'dist/ui.css'));
@@ -48,23 +48,23 @@ test('packageRelease rejects invalid tags and missing build output', () => {
 
 test('packageRelease creates a deterministic, explicit archive with checksums', { skip: process.platform === 'win32' && 'release archives are built on Ubuntu because Windows does not include zip' }, () => {
 	const source = makeFixture();
-	const first = mkdtempSync(join(tmpdir(), 'portless-home-package-first-'));
-	const second = mkdtempSync(join(tmpdir(), 'portless-home-package-second-'));
+	const first = mkdtempSync(join(tmpdir(), 'homeport-package-first-'));
+	const second = mkdtempSync(join(tmpdir(), 'homeport-package-second-'));
 	try {
 		const a = packageRelease({ tag: 'v1.2.3', source, output: first });
 		const b = packageRelease({ tag: 'v1.2.3', source, output: second });
-		const expected = releaseFiles.map((file) => 'portless-home-v1.2.3/' + file);
-		assert.deepEqual(listArchive(a.tarball), [...expected, 'portless-home-v1.2.3/RELEASE_MANIFEST.txt']);
+		const expected = releaseFiles.map((file) => 'homeport-v1.2.3/' + file);
+		assert.deepEqual(listArchive(a.tarball), [...expected, 'homeport-v1.2.3/RELEASE_MANIFEST.txt']);
 		assert.equal(readFileSync(a.tarball).equals(readFileSync(b.tarball)), true, 'tarball must be reproducible');
 		assert.equal(readFileSync(a.zipball).equals(readFileSync(b.zipball)), true, 'zipball must be reproducible');
 		const checksums = readFileSync(a.checksumFile, 'utf8');
 		const hash = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
-		assert.equal(checksums, `${hash(a.tarball)}  portless-home-v1.2.3.tar.gz\n${hash(a.zipball)}  portless-home-v1.2.3.zip\n`);
-		const extracted = mkdtempSync(join(tmpdir(), 'portless-home-package-extracted-'));
+		assert.equal(checksums, `${hash(a.tarball)}  homeport-v1.2.3.tar.gz\n${hash(a.zipball)}  homeport-v1.2.3.zip\n`);
+		const extracted = mkdtempSync(join(tmpdir(), 'homeport-package-extracted-'));
 		try {
 			const extraction = spawnSync('tar', ['-xzf', a.tarball, '-C', extracted], { encoding: 'utf8' });
 			assert.equal(extraction.status, 0, extraction.stderr);
-			const manifest = readFileSync(join(extracted, 'portless-home-v1.2.3', 'RELEASE_MANIFEST.txt'), 'utf8');
+			const manifest = readFileSync(join(extracted, 'homeport-v1.2.3', 'RELEASE_MANIFEST.txt'), 'utf8');
 			const expectedManifest = releaseFiles.map((file) => `${hash(join(source, file))}  ${file}`).join('\n') + '\n';
 			assert.equal(manifest, expectedManifest);
 		} finally {

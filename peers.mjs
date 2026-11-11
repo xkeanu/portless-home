@@ -1,5 +1,5 @@
-// portless-home peers: other portless-home instances on the tailnet, read from
-// ~/.portless-home/peers.json ({ "peers": ["https://<device>.<tailnet>.ts.net"] })
+// homeport peers: other homeport instances on the tailnet, read from
+// ~/.homeport/peers.json ({ "peers": ["https://<device>.<tailnet>.ts.net"] })
 // and fetched through their GET /api/routes. This module owns that wire format
 // in both directions: snapshot() produces it, parsePeerSnapshot() checks it.
 // Peer responses are untrusted input.
