@@ -41,6 +41,11 @@ esac
 NODE_BIN="$(command -v node)" || { echo "node not found on PATH."; exit 1; }
 
 # Upgrade from the old portless-home name: stop its service, keep its config.
+# Two config dirs can't be merged safely (access.json decides who may edit).
+if [ -d "$HOME/.portless-home" ] && [ -e "$INSTALL_DIR" ]; then
+	echo "Both ~/.portless-home and $INSTALL_DIR exist. Move the files you want to keep into $INSTALL_DIR, delete ~/.portless-home, then rerun."
+	exit 1
+fi
 if [ "$OS" = "Darwin" ]; then
 	launchctl bootout "gui/$(id -u)/sh.portless.home" 2>/dev/null || true
 	rm -f "$HOME/Library/LaunchAgents/sh.portless.home.plist"
@@ -48,7 +53,7 @@ else
 	systemctl --user disable --now portless-home.service 2>/dev/null || true
 	rm -f "$HOME/.config/systemd/user/portless-home.service"
 fi
-if [ -d "$HOME/.portless-home" ] && [ ! -e "$INSTALL_DIR" ]; then
+if [ -d "$HOME/.portless-home" ]; then
 	mv "$HOME/.portless-home" "$INSTALL_DIR"
 	echo "Moved ~/.portless-home to $INSTALL_DIR."
 fi

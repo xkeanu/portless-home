@@ -35,6 +35,11 @@ foreach ($File in $RequiredFiles) {
 
 # Upgrade from the old portless-home name: stop its task, keep its config.
 $LegacyDir = Join-Path $env:USERPROFILE '.portless-home'
+# Two config dirs can't be merged safely (access.json decides who may edit).
+if ((Test-Path -LiteralPath $LegacyDir) -and (Test-Path -LiteralPath $InstallDir)) {
+	Write-Host "Both $LegacyDir and $InstallDir exist. Move the files you want to keep into $InstallDir, delete $LegacyDir, then rerun."
+	exit 1
+}
 if (Get-ScheduledTask -TaskName 'portless-home' -ErrorAction SilentlyContinue) {
 	Stop-ScheduledTask -TaskName 'portless-home' -ErrorAction SilentlyContinue
 	Unregister-ScheduledTask -TaskName 'portless-home' -Confirm:$false
@@ -44,7 +49,7 @@ if (Get-ScheduledTask -TaskName 'portless-home' -ErrorAction SilentlyContinue) {
 		Start-Sleep -Milliseconds 200
 	}
 }
-if ((Test-Path -LiteralPath $LegacyDir) -and -not (Test-Path -LiteralPath $InstallDir)) {
+if (Test-Path -LiteralPath $LegacyDir) {
 	Move-Item -LiteralPath $LegacyDir -Destination $InstallDir
 	Write-Host "Moved $LegacyDir to $InstallDir."
 }

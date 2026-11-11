@@ -94,3 +94,22 @@ test('POSIX install moves an old portless-home install and stops its service', {
 	const activity = readFileSync(value.activity, 'utf8');
 	assert.match(activity, process.platform === 'darwin' ? /launchctl bootout gui\/\d+\/sh\.portless\.home/ : /systemctl --user disable --now portless-home\.service/);
 });
+
+test('POSIX install refuses to upgrade when old and new config dirs both exist', { skip: process.platform === 'win32' && 'POSIX installer runs on macOS and Linux' }, (t) => {
+	const value = fixture(t, null, false);
+	const legacy = join(value.profile, '.portless-home');
+	mkdirSync(legacy, { recursive: true });
+	writeFileSync(join(legacy, 'access.json'), '{"owners":["me@example.com"]}\n');
+	const bin = join(value.root, 'bin');
+	mkdirSync(bin);
+	for (const command of ['launchctl', 'systemctl', 'tailscale', 'curl', 'sleep']) {
+		writeFileSync(join(bin, command), '#!/bin/sh\nprintf "%s\\n" "${0##*/}" >> "$PORTLESS_INSTALL_TEST_ACTIVITY"\nexit 91\n', { mode: 0o755 });
+	}
+	const result = spawnSync('sh', [join(value.source, 'install.sh')], {
+		encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, PORTLESS_INSTALL_TEST_PROFILE: value.profile, PORTLESS_INSTALL_TEST_ACTIVITY: value.activity },
+	});
+	assert.equal(result.status, 1, result.stdout + result.stderr);
+	assert.match(result.stdout, /Both ~\/\.portless-home and .* exist/);
+	assert.equal(readFileSync(join(legacy, 'access.json'), 'utf8'), '{"owners":["me@example.com"]}\n');
+	assertUnchanged(value);
+});
