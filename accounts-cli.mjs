@@ -29,7 +29,7 @@ const help = (name) => {
 		const command = commands[name];
 		return `Usage: ${invocation} ${name} ${command.args}\n\n${command.description}\n\nExamples:\n  ${invocation} ${command.example}\n${command.extraExample ? `  ${invocation} ${command.extraExample}\n` : ''}`;
 	}
-	return `Usage: ${invocation} <command> [options]\n\nCommands:\n${Object.keys(commands).map((name) => `  ${name}`).join('\n')}\n\nUse <command> --help for options and examples.\nConfiguration: PORTLESS_ACCOUNTS or ~/.portless-home/accounts/config.json\nSuccess writes JSON to stdout. Errors write JSON to stderr. No prompts.\n\nExamples:\n  ${invocation} enable\n  ${invocation} capture claude --label Work\n  ${invocation} status\n`;
+	return `Usage: ${invocation} <command> [options]\n\nCommands:\n${Object.keys(commands).map((name) => `  ${name}`).join('\n')}\n\nUse <command> --help for options and examples.\nConfiguration: PORTLESS_ACCOUNTS or ~/.homeport/accounts/config.json\nSuccess writes JSON to stdout. Errors write JSON to stderr. No prompts.\n\nExamples:\n  ${invocation} enable\n  ${invocation} capture claude --label Work\n  ${invocation} status\n`;
 };
 
 function parse(argv) {
@@ -112,7 +112,7 @@ export async function runCli(argv, options = {}) {
 		const parsed = parse(argv);
 		if (parsed.help) { stdout(parsed.help); return 0; }
 		const { name, flags, positionals } = parsed;
-		const configPath = options.configPath ?? (process.env.PORTLESS_ACCOUNTS || join(homedir(), '.portless-home', 'accounts', 'config.json'));
+		const configPath = options.configPath ?? (process.env.PORTLESS_ACCOUNTS || join(homedir(), '.homeport', 'accounts', 'config.json'));
 		const manager = options.manager ?? createAccountManager({ configPath });
 		if (name === 'enable' || name === 'disable') {
 			const config = readAccountSettings(configPath);

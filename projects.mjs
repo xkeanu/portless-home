@@ -1,4 +1,4 @@
-// portless-home projects: Docker Compose stacks started with `portless compose up`.
+// homeport projects: Docker Compose stacks started with `portless compose up`.
 // portless (>= 0.16) registers each published HTTP service through `portless
 // alias`, so the route is static (pid 0) and named <service>.<project>.localhost
 // (see docs/fixtures/routes.compose.json). routes.json carries no other marker.

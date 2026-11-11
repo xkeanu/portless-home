@@ -27,12 +27,12 @@ jobs:
       - name: package and smoke-test the extracted archive
         run: |
           node scripts/package.mjs "$GITHUB_REF_NAME" --output release
-          (cd release && sha256sum -c "portless-home-$GITHUB_REF_NAME.sha256")
+          (cd release && sha256sum -c "homeport-$GITHUB_REF_NAME.sha256")
       - uses: actions/setup-node@v4
         with:
           node-version: 20.6.1
       - name: smoke-test the packaged Node 20.6 runtime
-        run: node scripts/release-smoke.mjs "release/portless-home-$GITHUB_REF_NAME.tar.gz"
+        run: node scripts/release-smoke.mjs "release/homeport-$GITHUB_REF_NAME.tar.gz"
       - name: retain release artifacts for publication
         uses: actions/upload-artifact@v4
         with:
@@ -58,7 +58,7 @@ jobs:
       - name: validate PowerShell installers without installing
         shell: powershell
         run: |
-          foreach ($f in 'install.ps1', 'uninstall.ps1', 'tray/portless-home-tray.ps1') {
+          foreach ($f in 'install.ps1', 'uninstall.ps1', 'tray/homeport-tray.ps1') {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors) | Out-Null
             if ($errors) { $errors; exit 1 }
@@ -78,13 +78,13 @@ jobs:
         run: |
           swift test
           ./build.sh
-          test -x dist/PortlessHome.app/Contents/MacOS/PortlessHome
-          lipo dist/PortlessHome.app/Contents/MacOS/PortlessHome -verify_arch arm64 x86_64
+          test -x dist/Homeport.app/Contents/MacOS/Homeport
+          lipo dist/Homeport.app/Contents/MacOS/Homeport -verify_arch arm64 x86_64
       - name: zip the ad-hoc-signed app
         working-directory: macos
         run: |
           mkdir -p ../release
-          ditto -c -k --keepParent dist/PortlessHome.app "../release/PortlessHome-$GITHUB_REF_NAME-macos.zip"
+          ditto -c -k --keepParent dist/Homeport.app "../release/Homeport-$GITHUB_REF_NAME-macos.zip"
       - name: retain the macOS app for publication
         uses: actions/upload-artifact@v4
         with:
@@ -112,5 +112,5 @@ jobs:
           GH_REPO: ${{ github.repository }}
         # Every release stays a pre-release until signed builds land (#34).
         run: |
-          notes="The macOS app (PortlessHome-$GITHUB_REF_NAME-macos.zip) is unsigned (ad-hoc signature only), so macOS blocks its first launch. Open it once, then choose System Settings → Privacy & Security → Open Anyway, or run \`xattr -dr com.apple.quarantine /Applications/PortlessHome.app\`. Signed and notarized builds are tracked in #34."
+          notes="The macOS app (Homeport-$GITHUB_REF_NAME-macos.zip) is unsigned (ad-hoc signature only), so macOS blocks its first launch. Open it once, then choose System Settings → Privacy & Security → Open Anyway, or run \`xattr -dr com.apple.quarantine /Applications/Homeport.app\`. Signed and notarized builds are tracked in #34."
           gh release create "$GITHUB_REF_NAME" release/* --repo "$GH_REPO" --verify-tag --prerelease --title "$GITHUB_REF_NAME" --notes "$notes" --generate-notes

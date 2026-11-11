@@ -1,4 +1,4 @@
-// portless-home: a tiny tailnet home page for portless.
+// homeport: a tiny tailnet home page for portless.
 // Lists the machine's running portless apps with their Tailscale URLs.
 // Reads ~/.portless/routes.json on every request — no restarts needed.
 import { createServer, request } from 'node:http';
@@ -19,13 +19,13 @@ import { accountHttp } from './accounts-http.mjs';
 import { readAccess, viewer, mayWrite } from './access.mjs';
 
 const ROUTES = process.env.PORTLESS_ROUTES || join(homedir(), '.portless', 'routes.json');
-const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.portless-home', 'names.json');
-const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.portless-home', 'layout.json');
-const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.portless-home', 'peers.json');
-const APPS = process.env.PORTLESS_APPS || join(homedir(), '.portless-home', 'apps.json');
-const EXTERNAL_APPS = process.env.PORTLESS_EXTERNAL_APPS || join(homedir(), '.portless-home', 'external-apps.json');
-const ACCESS = process.env.PORTLESS_ACCESS || join(homedir(), '.portless-home', 'access.json');
-const ACCOUNTS = process.env.PORTLESS_ACCOUNTS || join(homedir(), '.portless-home', 'accounts', 'config.json');
+const NAMES = process.env.PORTLESS_NAMES || join(homedir(), '.homeport', 'names.json');
+const LAYOUT = process.env.PORTLESS_LAYOUT || join(homedir(), '.homeport', 'layout.json');
+const PEERS = process.env.PORTLESS_PEERS || join(homedir(), '.homeport', 'peers.json');
+const APPS = process.env.PORTLESS_APPS || join(homedir(), '.homeport', 'apps.json');
+const EXTERNAL_APPS = process.env.PORTLESS_EXTERNAL_APPS || join(homedir(), '.homeport', 'external-apps.json');
+const ACCESS = process.env.PORTLESS_ACCESS || join(homedir(), '.homeport', 'access.json');
+const ACCOUNTS = process.env.PORTLESS_ACCOUNTS || join(homedir(), '.homeport', 'accounts', 'config.json');
 const accounts = createAccountManager({ configPath: ACCOUNTS });
 const accountRequest = accountHttp(accounts, (model) => page({ view: 'accounts', accounts: model, t: { ...strings('en'), title: 'AI accounts' } }));
 const launches = launcher();
@@ -204,7 +204,7 @@ const localApps = async (text = readText(ROUTES)) => {
 	return { routes, up, names: readNames(), pinned: new Set(pinned) };
 };
 
-// JSON twin of the cards, for other portless-home instances (see peers.mjs).
+// JSON twin of the cards, for other homeport instances (see peers.mjs).
 // Lists this device only, so peers pointing at each other cannot fan out.
 const api = async (res) => {
 	const { routes, up, names } = await localApps();

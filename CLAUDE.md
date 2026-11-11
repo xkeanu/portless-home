@@ -1,4 +1,4 @@
-# portless-home
+# homeport
 
 Read CONTRIBUTING.md before changing code — it defines the design principles (prebuilt Node-only releases, contributor UI builds, pure rendering, and safe handling of user-influenced data).
 

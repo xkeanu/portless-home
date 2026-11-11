@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping out! portless-home is intentionally tiny — the bar for
+Thanks for helping out! homeport is intentionally tiny — the bar for
 merging is "small, focused, and keeps the project simple."
 
 ## Ground rules
@@ -56,8 +56,8 @@ Run the same checks locally:
 ```sh
 npm ci
 npm test
-node scripts/package.mjs v0.0.0-test --output /tmp/portless-home-release
-node scripts/release-smoke.mjs /tmp/portless-home-release/portless-home-v0.0.0-test.tar.gz
+node scripts/package.mjs v0.0.0-test --output /tmp/homeport-release
+node scripts/release-smoke.mjs /tmp/homeport-release/homeport-v0.0.0-test.tar.gz
 ```
 
 `npm run build` writes `dist/ui-server.mjs`, `dist/ui.js`, and `dist/ui.css`.

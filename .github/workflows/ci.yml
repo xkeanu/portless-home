@@ -48,14 +48,14 @@ jobs:
           node --check dist/ui-server.mjs
           bash -n install.sh
           bash -n uninstall.sh
-          sh -n menubar/portless-home.15s.sh
-          ruby -c Formula/portless-home.rb
-          ruby -c Formula/portless-home-app.rb
+          sh -n menubar/homeport.15s.sh
+          ruby -c Formula/homeport.rb
+          ruby -c Formula/homeport-app.rb
           sh -n macos/build.sh
       - name: powershell syntax checks
         shell: pwsh
         run: |
-          foreach ($f in 'install.ps1', 'uninstall.ps1', 'tray/portless-home-tray.ps1') {
+          foreach ($f in 'install.ps1', 'uninstall.ps1', 'tray/homeport-tray.ps1') {
             $errors = $null
             [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$null, [ref]$errors) | Out-Null
             if ($errors) { $errors; exit 1 }
@@ -64,9 +64,9 @@ jobs:
         run: |
           mkdir -p ~/.portless
           printf '[{"hostname":"demo.localhost","pid":%d,"tailscaleUrl":"https://mac.tailnet.ts.net:8443"},{"hostname":"dead.localhost","pid":4194305}]' $$ > ~/.portless/routes.json
-          printf '{"apps":[{"label":"External CI fixture","url":"https://external-ci.example.ts.net:8443/path"}]}\n' > "$RUNNER_TEMP/portless-home-external-apps.json"
-          PORTLESS_ACCOUNTS="$RUNNER_TEMP/portless-home-accounts/config.json" node accounts-cli.mjs enable
-          PORTLESS_ACCOUNT_HOME="$RUNNER_TEMP/portless-home-provider-home" PORTLESS_ACCOUNTS="$RUNNER_TEMP/portless-home-accounts/config.json" PORTLESS_EXTERNAL_APPS="$RUNNER_TEMP/portless-home-external-apps.json" node server.mjs &
+          printf '{"apps":[{"label":"External CI fixture","url":"https://external-ci.example.ts.net:8443/path"}]}\n' > "$RUNNER_TEMP/homeport-external-apps.json"
+          PORTLESS_ACCOUNTS="$RUNNER_TEMP/homeport-accounts/config.json" node accounts-cli.mjs enable
+          PORTLESS_ACCOUNT_HOME="$RUNNER_TEMP/homeport-provider-home" PORTLESS_ACCOUNTS="$RUNNER_TEMP/homeport-accounts/config.json" PORTLESS_EXTERNAL_APPS="$RUNNER_TEMP/homeport-external-apps.json" node server.mjs &
           sleep 1
           page=$(curl -sf http://127.0.0.1:5995)
           echo "$page" | grep -q 'demo' || { echo "missing app link"; exit 1; }
@@ -81,7 +81,7 @@ jobs:
           node-version: 20.6.1
       - name: packaged Node 20.6 runtime smoke test
         run: |
-          node scripts/release-smoke.mjs .release/portless-home-v0.0.0-ci.tar.gz
+          node scripts/release-smoke.mjs .release/homeport-v0.0.0-ci.tar.gz
 
   windows:
     runs-on: windows-latest
@@ -105,16 +105,16 @@ jobs:
           $ErrorActionPreference = 'Stop'
           .\install.ps1 -NoAutostart
           if ($LASTEXITCODE) {
-            Get-ScheduledTaskInfo portless-home | Format-List LastRunTime, LastTaskResult
-            $dir = "$env:USERPROFILE\.portless-home"
+            Get-ScheduledTaskInfo homeport | Format-List LastRunTime, LastTaskResult
+            $dir = "$env:USERPROFILE\.homeport"
             Start-Process node -ArgumentList "--env-file=$dir\service.env", "$dir\server.mjs" -NoNewWindow -RedirectStandardError server-err.txt
             Start-Sleep -Seconds 3
             Get-Content server-err.txt
             exit 1
           }
-          if ((Get-ScheduledTask portless-home).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
+          if ((Get-ScheduledTask homeport).Triggers.Count) { throw '-NoAutostart registered a logon trigger' }
           (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5995/api/menubar).Content
-          $installDir = "$env:USERPROFILE\.portless-home"
+          $installDir = "$env:USERPROFILE\.homeport"
           foreach ($file in 'external.mjs', 'projects.mjs', 'access.mjs', 'accounts.mjs', 'accounts-http.mjs', 'accounts-cli.mjs', 'account-store.mjs', 'account-providers.mjs', 'account-processes.mjs', 'account-routing.mjs', 'account-sync.mjs', 'dist\ui-server.mjs', 'dist\ui.js', 'dist\ui.css') {
             if (-not (Test-Path "$installDir\$file")) { throw "installed asset missing: $file" }
           }
@@ -134,13 +134,13 @@ jobs:
           foreach ($asset in 'assets/ui.js', 'assets/ui.css') {
             if ((Invoke-WebRequest -UseBasicParsing "http://127.0.0.1:5995/$asset").StatusCode -ne 200) { throw "missing $asset" }
           }
-          $tray = Start-Process powershell -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', 'tray\portless-home-tray.ps1' -PassThru
+          $tray = Start-Process powershell -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden', '-File', 'tray\homeport-tray.ps1' -PassThru
           Start-Sleep -Seconds 8
           if ($tray.HasExited) { throw "tray exited with $($tray.ExitCode)" }
           Stop-Process $tray
           .\uninstall.ps1
-          if (Get-ScheduledTask portless-home -ErrorAction SilentlyContinue) { throw 'task not removed' }
-          if (Test-Path "$env:USERPROFILE\.portless-home") { throw 'install dir not removed' }
+          if (Get-ScheduledTask homeport -ErrorAction SilentlyContinue) { throw 'task not removed' }
+          if (Test-Path "$env:USERPROFILE\.homeport") { throw 'install dir not removed' }
 
   macos-app:
     runs-on: macos-latest
@@ -156,4 +156,4 @@ jobs:
       - name: tests
         run: swift test
       - name: bundle
-        run: ./build.sh && test -x dist/PortlessHome.app/Contents/MacOS/PortlessHome
+        run: ./build.sh && test -x dist/Homeport.app/Contents/MacOS/Homeport

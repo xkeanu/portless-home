@@ -1,4 +1,4 @@
-# portless-home installer (Windows: per-user scheduled task, no admin needed).
+# homeport installer (Windows: per-user scheduled task, no admin needed).
 # Installs the home-page server as a login task and pins it to your tailnet
 # device URL via `tailscale serve`. Run from the repo directory:
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1 [-NoAutostart]
@@ -8,8 +8,8 @@
 param([switch]$NoAutostart)
 $ErrorActionPreference = 'Stop'
 
-$Task = 'portless-home'
-$InstallDir = Join-Path $env:USERPROFILE '.portless-home'
+$Task = 'homeport'
+$InstallDir = Join-Path $env:USERPROFILE '.homeport'
 $Port = if ($env:PORT) { [int]$env:PORT } else { 5995 }
 $User = "$env:USERDOMAIN\$env:USERNAME"
 
@@ -31,6 +31,27 @@ foreach ($File in $RequiredFiles) {
 		Write-Host "Missing $File. Run npm ci and npm run build before installing from a checkout."
 		exit 1
 	}
+}
+
+# Upgrade from the old portless-home name: stop its task, keep its config.
+$LegacyDir = Join-Path $env:USERPROFILE '.portless-home'
+# Two config dirs can't be merged safely (access.json decides who may edit).
+if ((Test-Path -LiteralPath $LegacyDir) -and (Test-Path -LiteralPath $InstallDir)) {
+	Write-Host "Both $LegacyDir and $InstallDir exist. Move the files you want to keep into $InstallDir, delete $LegacyDir, then rerun."
+	exit 1
+}
+if (Get-ScheduledTask -TaskName 'portless-home' -ErrorAction SilentlyContinue) {
+	Stop-ScheduledTask -TaskName 'portless-home' -ErrorAction SilentlyContinue
+	Unregister-ScheduledTask -TaskName 'portless-home' -Confirm:$false
+	foreach ($try in 1..25) {
+		$Old = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object { $_.CommandLine -like "*$LegacyDir\server.mjs*" }
+		if (-not $Old) { break }
+		Start-Sleep -Milliseconds 200
+	}
+}
+if (Test-Path -LiteralPath $LegacyDir) {
+	Move-Item -LiteralPath $LegacyDir -Destination $InstallDir
+	Write-Host "Moved $LegacyDir to $InstallDir."
 }
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -65,7 +86,7 @@ $Action = New-ScheduledTaskAction -Execute $Node -Argument "--env-file=`"$EnvFil
 $Principal = New-ScheduledTaskPrincipal -UserId $User -LogonType S4U
 $Settings = @{ ExecutionTimeLimit = [TimeSpan]::Zero; AllowStartIfOnBatteries = $true; DontStopIfGoingOnBatteries = $true; MultipleInstances = 'IgnoreNew' }
 if (-not $NoAutostart) { $Settings.RestartCount = 99; $Settings.RestartInterval = New-TimeSpan -Minutes 1 }
-$Register = @{ TaskName = $Task; Action = $Action; Principal = $Principal; Settings = New-ScheduledTaskSettingsSet @Settings; Description = 'portless-home tailnet directory page' }
+$Register = @{ TaskName = $Task; Action = $Action; Principal = $Principal; Settings = New-ScheduledTaskSettingsSet @Settings; Description = 'homeport tailnet directory page' }
 if (-not $NoAutostart) { $Register.Trigger = New-ScheduledTaskTrigger -AtLogOn -User $User }
 
 if (Get-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue) {

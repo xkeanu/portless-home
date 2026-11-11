@@ -1,4 +1,4 @@
-// portless-home i18n: the page's few UI strings, keyed by language.
+// homeport i18n: the page's few UI strings, keyed by language.
 // The Accept-Language header only selects a key here; nothing from it
 // reaches the HTML.
 export const STRINGS = {

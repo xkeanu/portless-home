@@ -15,7 +15,7 @@ const serve = (login) => ({ host: 'home.example.ts.net', 'x-forwarded-for': '100
 
 let dir;
 beforeEach((t) => {
-	dir = mkdtempSync(join(tmpdir(), 'portless-home-access-'));
+	dir = mkdtempSync(join(tmpdir(), 'homeport-access-'));
 	const keys = ['ROUTES', 'NAMES', 'LAYOUT', 'PEERS', 'APPS', 'EXTERNAL_APPS', 'ACCOUNTS', 'ACCESS'];
 	const previous = new Map(keys.map((key) => [key, process.env[`PORTLESS_${key}`]]));
 	for (const key of keys) process.env[`PORTLESS_${key}`] = join(dir, `${key}.json`);

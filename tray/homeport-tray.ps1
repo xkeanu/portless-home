@@ -1,26 +1,26 @@
-# portless-home in the system tray, the Windows counterpart of the xbar/SwiftBar
+# homeport in the system tray, the Windows counterpart of the xbar/SwiftBar
 # plugin in menubar/: your running portless apps with health dots and tailnet
 # links, plus Start/Stop/Restart for the login task. Run it without a window:
-#   powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File tray\portless-home-tray.ps1
+#   powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File tray\homeport-tray.ps1
 # A shortcut to that command in shell:startup brings it back at every login.
 #
 # Nothing here reads routes.json: the server renders the menu at GET /api/menubar
 # (see menubar.mjs) in the plugin text format, and the port comes from the
-# service.env install.ps1 writes (PORTLESS_HOME_URL overrides the server URL).
+# service.env install.ps1 writes (HOMEPORT_URL overrides the server URL).
 #Requires -Version 5.1
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 $ProgressPreference = 'SilentlyContinue'
 
-$Task = 'portless-home'
+$Task = 'homeport'
 $Port = 5995
-$InstallDir = Join-Path $env:USERPROFILE '.portless-home'
+$InstallDir = Join-Path $env:USERPROFILE '.homeport'
 $EnvFile = Join-Path $InstallDir 'service.env'
 if (Test-Path $EnvFile) {
 	$Found = Select-String -Path $EnvFile -Pattern '^PORT=(\d+)$' | Select-Object -First 1
 	if ($Found) { $Port = $Found.Matches[0].Groups[1].Value }
 }
-$Url = if ($env:PORTLESS_HOME_URL) { $env:PORTLESS_HOME_URL.TrimEnd('/') } else { "http://127.0.0.1:$Port" }
+$Url = if ($env:HOMEPORT_URL) { $env:HOMEPORT_URL.TrimEnd('/') } else { "http://127.0.0.1:$Port" }
 
 # A house, green when the server is up and grey when it is down: visible on
 # light and dark taskbars alike, no image files to ship.
@@ -51,10 +51,10 @@ function Update-Tray {
 	if ($Script:MenuText) {
 		$Tray.Icon = $UpIcon
 		# Line 1 is the plugin's menu bar title (house glyph + healthy count); Text is capped at 63 chars.
-		$Tray.Text = "portless-home $(($Script:MenuText -split "`n")[0])"
+		$Tray.Text = "homeport $(($Script:MenuText -split "`n")[0])"
 	} else {
 		$Tray.Icon = $DownIcon
-		$Tray.Text = 'portless-home is not running'
+		$Tray.Text = 'homeport is not running'
 	}
 }
 
@@ -103,7 +103,7 @@ $Menu.Add_Opening({
 			if ($Line) { [void]$Menu.Items.Add((New-MenuLine $Line)) }
 		}
 	} else {
-		[void]$Menu.Items.Add((New-MenuLine 'portless-home is not running | disabled=true color=gray'))
+		[void]$Menu.Items.Add((New-MenuLine 'homeport is not running | disabled=true color=gray'))
 	}
 	[void]$Menu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
 	if (Get-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue) {

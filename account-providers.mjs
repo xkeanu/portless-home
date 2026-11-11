@@ -276,7 +276,7 @@ async function probeCodex(command, home, env, checkpoint) {
 			pending.delete(message.id); message.error ? entry.reject(failure()) : entry.resolve(message.result);
 		});
 		(async () => {
-			await rpc('initialize', { clientInfo: { name: 'portless_home', title: 'Portless Home', version: '1.0.0' } });
+			await rpc('initialize', { clientInfo: { name: 'homeport', title: 'Homeport', version: '1.0.0' } });
 			send({ method: 'initialized', params: {} });
 			const account = await rpc('account/read', { refreshToken: false });
 			await checkpoint();
@@ -406,11 +406,11 @@ export function createProviders(config = {}, deps = {}) {
 				const identity = identifyCodex(saved);
 				if (!allowRefresh) {
 					const workspace = codexWorkspace(saved);
-					const data = await requestJson(fetcher, 'https://chatgpt.com/backend-api/wham/usage', { headers: { Authorization: `Bearer ${saved.auth.tokens.access_token}`, 'ChatGPT-Account-Id': workspace, 'User-Agent': 'portless-home' } });
+					const data = await requestJson(fetcher, 'https://chatgpt.com/backend-api/wham/usage', { headers: { Authorization: `Bearer ${saved.auth.tokens.access_token}`, 'ChatGPT-Account-Id': workspace, 'User-Agent': 'homeport' } });
 					if (data.account_id && data.account_id !== workspace) fail('IDENTITY_MISMATCH', 'The Codex usage belongs to another account.');
 					return { payload: copy(saved), windows: codexWindows(data, true), observedAt: new Date(clock()).toISOString(), identity: { ...identity, tier: data.plan_type ?? identity.tier } };
 				}
-				const temporary = await mkdtemp(join(deps.tmpdir ?? tmpdir(), 'portless-home-codex-'));
+				const temporary = await mkdtemp(join(deps.tmpdir ?? tmpdir(), 'homeport-codex-'));
 				await chmod(temporary, 0o700);
 				let checkpointed = JSON.stringify(saved);
 				const checkpoint = async () => {

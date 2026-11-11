@@ -33,7 +33,7 @@ export const decodeLogin = (value) => {
 	}
 };
 
-// ~/.portless-home/access.json: { "owners": ["alice@example.com"] }.
+// ~/.homeport/access.json: { "owners": ["alice@example.com"] }.
 // No file, or no owners key, means unconfigured: everyone may edit, as before
 // #48. A file that cannot be read or parsed, or a malformed owners list, is
 // `invalid`: remote viewers lose edit access rather than gain it.
@@ -55,7 +55,7 @@ const hinted = new Set();
 const hint = (key, message) => {
 	if (hinted.has(key)) return;
 	hinted.add(key);
-	console.warn(`portless-home: ${message} See README "Owners and viewers".`);
+	console.warn(`homeport: ${message} See README "Owners and viewers".`);
 };
 
 // Loopback without proxy or identity headers is this device: full access.

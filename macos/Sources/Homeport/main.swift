@@ -1,7 +1,7 @@
-// AppKit shell around PortlessHomeCore: the status item, its menu, the 15s
+// AppKit shell around HomeportCore: the status item, its menu, the 15s
 // poll of /api/routes, launchctl for the login service, and launch-at-login.
 import AppKit
-import PortlessHomeCore
+import HomeportCore
 import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.button?.title = " " + title(apps: apps)
         item.button?.appearsDisabled = apps == nil
         // Rebuilding while the menu is open resets its highlight, so skip no-ops.
-        let fresh = PortlessHomeCore.menu(
+        let fresh = HomeportCore.menu(
             apps: apps, home: home, service: service,
             launchAtLogin: SMAppService.mainApp.status == .enabled)
         guard fresh != entries else { return }
@@ -114,7 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.target = self
             return item
         case .quit:
-            return NSMenuItem(title: "Quit Portless Home", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            return NSMenuItem(title: "Quit Homeport", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         }
     }
 

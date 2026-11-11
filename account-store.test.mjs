@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createCipheriv, randomBytes } from 'node:crypto';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,4 +73,17 @@ test('settings reject unsafe permissions and malformed content', (t) => {
 		chmodSync(path, 0o644);
 		assert.throws(() => privateRead(path), { code: 'private-file' });
 	}
+});
+
+test('vault reads credentials sealed before the homeport rename', (t) => {
+	const { directory } = fixture(t);
+	const key = randomBytes(32);
+	const iv = randomBytes(12);
+	const cipher = createCipheriv('aes-256-gcm', key, iv);
+	cipher.setAAD(Buffer.from('portless-home account vault v1'));
+	const state = { version: 1, accounts: [{ id: 'claude-one', payload: { token: 'legacy-secret' } }], remote: [], pending: [] };
+	const data = Buffer.concat([cipher.update(JSON.stringify(state), 'utf8'), cipher.final()]);
+	writeFileSync(join(directory, 'key'), key, { mode: 0o600 });
+	writeFileSync(join(directory, 'vault.json'), JSON.stringify({ version: 1, iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') }), { mode: 0o600 });
+	assert.equal(accountVault(directory).read().accounts[0].payload.token, 'legacy-secret');
 });
